@@ -5,7 +5,7 @@
 Download the [nuScenes dataset](https://www.nuscenes.org/download) to `./data/nuscenes`.
 
 **2. Download infos files**
-Download the [Info Files](TODO).
+Download the [Info Files](https://drive.google.com/file/d/1YHJA29BCWgUxxRh7UImoaoTAIi8hBOEO/view?usp=sharing).
 
 Unzip the data_nusc.tar.gz and organize the files following the Folder structure.
 
@@ -14,7 +14,7 @@ Unzip the data_nusc.tar.gz and organize the files following the Folder structure
 cd /path/to/StreamPETR
 mkdir ckpts
 ```
-Please download the pretrained [2D llm weights](https://drive.google.com/drive/folders/1yqNyAp3Pp9CdENpah6AiMt3IfOXbqeUO?usp=drive_link) to ./ckpts. 
+Please download the pretrained [2D llm weights](https://drive.google.com/drive/folders/1yqNyAp3Pp9CdENpah6AiMt3IfOXbqeUO?usp=sharing) to ./ckpts. 
 
 
 

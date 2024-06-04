@@ -49,17 +49,17 @@ OmniDrive
 │   │   ├── samples/
 │   │   ├── sweeps/
 │   │   ├── v1.0-test/
-|   |   ├── v1.0-trainval/
-|   |   ├── conv/
-|   |   ├── desc/
-|   |   ├── keywords/
-|   |   ├── vqa/
-|   |   ├── nuscenes2d_ego_temporal_infos_train.pkl
-|   |   ├── nuscenes2d_ego_temporal_infos_val.pkl
-|   |   ├── data_dict_sample.pkl
-|   |   ├── data_dict_subset_B.json
-|   |   ├── data_dict_subset_B_val.pkl
-|   |   ├── lane_obj_train.pkl
+│   │   ├── v1.0-trainval/
+│   │   ├── conv/
+│   │   ├── desc/
+│   │   ├── keywords/
+│   │   ├── vqa/
+│   │   ├── nuscenes2d_ego_temporal_infos_train.pkl
+│   │   ├── nuscenes2d_ego_temporal_infos_val.pkl
+│   │   ├── data_dict_sample.pkl
+│   │   ├── data_dict_subset_B.json
+│   │   ├── data_dict_subset_B_val.pkl
+│   │   ├── lane_obj_train.pkl
 ```
 
 **5. Inference**

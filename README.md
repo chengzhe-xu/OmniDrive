@@ -23,13 +23,19 @@ Please download the pretrained [2D llm weights](https://drive.google.com/drive/f
 cd /path/to/StreamPETR
 conda create -n demo python=3.9
 pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --extraindex-url https://download.pytorch.org/whl/cu117
-pip install flash-attn==2.5.6 
-pip install transformers==4.39.3 
-pip install openai==1.10.0 
-pip install accelerate==0.29.0 
+pip install flash-attn==0.2.8
+pip install transformers==4.31.0 
 pip install mmcv-full==1.6.2 -f https://download.openmmlab.com/mmcv/dist/cu117/torch1.13/index.html
+pip install mmdet==2.28.2
+pip install mmsegmentation==0.30.0
+git clone https://github.com/open-mmlab/mmdetection3d.git
+cd mmdetection3d
+git checkout v1.0.0rc6 
+pip install -e .
+pip uninstall setuptools
+pip install setuptools==59.5.0
 ```
-You can refer to py39.yaml for more details if you can’t run the scripts.
+
 
 After preparation, you will be able to see the following directory structure:  
 

@@ -245,11 +245,12 @@ class StreamPETRHead(AnchorFreeHead):
             self.pseudo_reference_points = nn.Embedding(self.num_propagated, 3)
 
         self.query_embedding = nn.Embedding(self.num_extra, self.embed_dims)
-        self.can_bus_embed = nn.Sequential(
-            nn.Linear(102, self.embed_dims*4),
-            nn.ReLU(),
-            nn.Linear(self.embed_dims*4, self.output_dims),
-        )
+        if self.output_dims is not None:
+            self.can_bus_embed = nn.Sequential(
+                nn.Linear(102, self.embed_dims*4),
+                nn.ReLU(),
+                nn.Linear(self.embed_dims*4, self.output_dims),
+            )
 
         self.query_pos = None
 

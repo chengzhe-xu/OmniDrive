@@ -24,6 +24,7 @@ import random
 import math
 import pyquaternion
 from nuscenes.utils.data_classes import Box as NuScenesBox
+from transformers import AutoTokenizer
 from .utils.data_utils import preprocess
 from .utils.constants import DEFAULT_IMAGE_TOKEN
 import copy
@@ -38,14 +39,11 @@ class CustomNuScenesDataset(NuScenesDataset):
     """
 
     def __init__(self, 
-                 tokenizer,
-                 max_pair=10,
                  seq_mode=False, 
                  seq_split_num=1, 
-                 drivelm_path='./data/nuscenes/restructured_drivelm_data.json',
-                 nuscqa_path='./data/nuscenes/restructured_nuscQA_train_data.json',
                  lane_path='./data/nuscenes/data_dict_sample.pkl',
-                 eval_mode=['text', 'det'],
+                 lane_anno_file='./data/nuscenes/data_dict_subset_B_val.pkl',
+                 eval_mode=['lane', 'det'],
                  *args, 
                  **kwargs):
         super().__init__(*args, **kwargs)
@@ -54,61 +52,14 @@ class CustomNuScenesDataset(NuScenesDataset):
         self.eval_mode = eval_mode
         self.lane_info = pickle.load(open(lane_path, 'rb'))
         self.vqa_data = dict()
-        self.lane_anno_file = './data/nuscenes/data_dict_subset_B_val.pkl'
+        self.lane_anno_file = lane_anno_file
         
-        if drivelm_path is not None:
-            drive_lm = self.preprocess_drivelm(drivelm_path)
-            merge_dicts(self.vqa_data, drive_lm)
-        
-        if nuscqa_path is not None:
-            nuscqa = self.preprocess_nuscqa(nuscqa_path)
-            merge_dicts(self.vqa_data, nuscqa)
             
-        self.max_pair = max_pair
-        self.tokenizer =  AutoTokenizer.from_pretrained(tokenizer,
-                                           model_max_length=1024,
-                                           padding_side="right",
-                                           use_fast=False,
-                                           )
-        self.tokenizer.pad_token = self.tokenizer.unk_token
         if seq_mode:
             self.seq_split_num = seq_split_num
             self.random_length = 0
             self._set_sequence_group_flag() # Must be called after load_annotations b/c load_annotations does sorting.
 
-    def preprocess_drivelm(self, vqa_path):
-        vqa_data = dict()
-        with open(vqa_path,'r',encoding='utf8')as fp:
-            ori_data = json.load(fp)
-        for sample_token in ori_data.keys():
-            sources = []
-            for _, data in ori_data[sample_token]['frame_data']['QA'].items():
-                for qa in data:
-                    sources.append(
-                        [{"from": 'human',
-                                    "value": qa['Q']},
-                                    {"from": 'gpt',
-                                    "value": qa['A']}]
-                    )
-            vqa_data[sample_token] = sources
-        return vqa_data
-  
-    def preprocess_nuscqa(self, vqa_path):
-        vqa_data = dict()
-        with open(vqa_path,'r',encoding='utf8')as fp:
-            ori_data = json.load(fp)
-        for sample_token in ori_data.keys():
-            sources = []
-            for qa in ori_data[sample_token]:
-                sources.append(
-                    [{"from": 'human',
-                                "value": qa['Q']},
-                                {"from": 'gpt',
-                                "value": qa['A']}]
-                )
-            vqa_data[sample_token] = sources
-        return vqa_data  
-    
     
     def _set_sequence_group_flag(self):
         """
@@ -178,31 +129,11 @@ class CustomNuScenesDataset(NuScenesDataset):
 
         ego_pose_inv = invert_matrix_egopose_numpy(ego_pose)
         
-        vqa_anno = []
-        if info['token'] in self.vqa_data.keys():
-            vqa_anno = copy.deepcopy(self.vqa_data[info['token']])
-        else:
-            vqa_anno = [[{"from": 'human',
-                                "value": ''},
-                                {"from": 'gpt',
-                                "value": ''}]]
-        if not self.test_mode:         
-            random.shuffle(vqa_anno)
-            vqa_anno = vqa_anno[:self.max_pair]
-            vqa_anno = [item for pair in vqa_anno for item in pair]
-            vqa_anno[0]['value'] = DEFAULT_IMAGE_TOKEN + '\n' + vqa_anno[0]['value']  
-            vqa_converted = preprocess([vqa_anno], self.tokenizer, True)
-            input_ids = vqa_converted['input_ids'][0]
-            vlm_labels = vqa_converted['labels'][0]
-        else:
-            vlm_labels = [anno[0]['value'] for anno in vqa_anno]     
-            for anno in vqa_anno:
-                anno[0]['value'] = DEFAULT_IMAGE_TOKEN + '\n' + anno[0]['value']  
-                anno[1]['value'] = ''
-            vqa_converted = preprocess(vqa_anno, self.tokenizer, True, False)
-            input_ids = vqa_converted['input_ids']
             
         input_dict = dict(
+            can_bus = info['can_bus'],
+            command = info['gt_planning_command'],
+            location=info['location'].split("-")[0],
             sample_idx=info['token'],
             pts_filename=info['lidar_path'],
             sweeps=info['sweeps'],
@@ -213,8 +144,7 @@ class CustomNuScenesDataset(NuScenesDataset):
             scene_token=info['scene_token'],
             frame_idx=info['frame_idx'],
             timestamp=info['timestamp'] / 1e6,
-            input_ids=input_ids,
-            vlm_labels=vlm_labels,
+            cam_infos=info['cams'],
         )
 
         if self.modality['use_camera']:
@@ -272,6 +202,13 @@ class CustomNuScenesDataset(NuScenesDataset):
                     lane_pts=lane_pts,
 
             )
+            if 'gt_planning' in info.keys():
+                input_dict.update( 
+                dict(
+                    gt_planning=info['gt_planning'],
+                    gt_planning_mask=info['gt_planning_mask'],
+
+            ))
             input_dict['ann_info'] = annos
             
         return input_dict
@@ -373,25 +310,6 @@ class CustomNuScenesDataset(NuScenesDataset):
             if show or out_dir:
                 self.show(results, out_dir, show=show, pipeline=pipeline)
             
-        if 'text' in self.eval_mode:
-            from datetime import datetime
-            text_out = {}
-            for sample_id, text in enumerate(mmcv.track_iter_progress(results)):
-                sample_token = self.data_infos[sample_id]['token']
-                text_out[sample_token] = text['text_out']
-                
-            now = datetime.now()
-            # 格式化时间字符串
-            timestamp = now.strftime("%Y%m%d_%H%M%S")
-
-            # 创建文件名
-            mmcv.mkdir_or_exist("./vlm_out")
-            file_name = f"./vlm_out/text_out_{timestamp}.json"
-
-            # 将数据写入 JSON 文件
-            with open(file_name, 'w', encoding='utf-8') as f:
-                json.dump(text_out, f, ensure_ascii=False, indent=4)
-
         return results_dict
 
     def _evaluate_single(self,
@@ -657,16 +575,3 @@ def lidar_nusc_box_to_global(info,
         box.translate(np.array(info['ego2global_translation']))
         box_list.append(box)
     return box_list
-
-def merge_dicts(base_dict, new_dict):
-    for key, new_value in new_dict.items():
-        if key in base_dict:
-            # 确保基础字典中的值也是列表类型
-            base_value = base_dict[key]
-            if not isinstance(base_value, list):
-                raise ValueError(f'在基础字典中，键 "{key}" 对应的值不是列表。')
-            # 合并列表
-            base_dict[key].extend(new_value)
-        else:
-            # 如果键不存在，直接添加
-            base_dict[key] = new_value

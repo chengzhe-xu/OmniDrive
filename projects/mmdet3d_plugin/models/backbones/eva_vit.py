@@ -1,4 +1,4 @@
-import fvcore.nn.weight_init as weight_init
+# import fvcore.nn.weight_init as weight_init
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -741,8 +741,8 @@ class ResBottleneckBlock(CNNBlockBase):
         self.conv3 = Conv2d(bottleneck_channels, out_channels, 1, bias=False)
         self.norm3 = get_norm(norm, out_channels)
 
-        for layer in [self.conv1, self.conv2, self.conv3]:
-            weight_init.c2_msra_fill(layer)
+        # for layer in [self.conv1, self.conv2, self.conv3]:
+        #     weight_init.c2_msra_fill(layer)
         for layer in [self.norm1, self.norm2]:
             layer.weight.data.fill_(1.0)
             layer.bias.data.zero_()

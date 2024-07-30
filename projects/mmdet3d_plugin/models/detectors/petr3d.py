@@ -18,14 +18,11 @@ from projects.mmdet3d_plugin.models.utils.grid_mask import GridMask
 from projects.mmdet3d_plugin.models.utils.misc import locations
 from ...datasets.utils.constants import IGNORE_INDEX
 from mmdet3d.models import builder
-from torch.cuda.amp import autocast
-from .llama_flash_attn_monkey_patch import replace_llama_attn_with_flash_attn
 from ..dense_heads.llava_llama import LlavaLlamaForCausalLM
 from transformers import AutoTokenizer, GenerationConfig
 from ..utils.misc import load_model
 from ..utils.positional_encoding import pos2posemb2d
 import torch.nn as nn
-from .llama_flash_attn_monkey_patch import replace_llama_attn_with_flash_attn
 import os
 import json
 import mmcv
@@ -62,7 +59,6 @@ class Petr3D(MVXTwoStageDetector):
                  stride=16,
                  position_level=0,
                  aux_2d_only=True,
-                 single_test=False,
                  frozen=True,
                  use_lora=False,
                  pretrained=None):
@@ -74,8 +70,6 @@ class Petr3D(MVXTwoStageDetector):
         self.save_path = save_path
         self.grid_mask = GridMask(True, True, rotate=1, offset=False, ratio=0.5, mode=1, prob=0.7)
         self.use_grid_mask = use_grid_mask
-        self.prev_scene_token = None
-        self.single_test = single_test
         self.stride = stride
         self.position_level = position_level
         self.aux_2d_only = aux_2d_only
@@ -449,7 +443,6 @@ class Petr3D(MVXTwoStageDetector):
                     Q=img_metas[0]['vlm_labels'].data[i],
                     A=self.tokenizer.batch_decode(output_ids, skip_special_tokens=True),
                     ))
-                print(generated_text)
             with open(self.save_path+img_metas[0]['sample_idx'], 'w') as file:
                 json.dump(generated_text, file)
         return bbox_results, generated_text, lane_results

@@ -21,7 +21,8 @@ class_names = [
 num_gpus = 8
 batch_size = 2
 num_iters_per_epoch = 28130 // (num_gpus * batch_size)
-num_epochs = 12
+num_epochs = 6
+llm_path = 'ckpts/final/'
 
 collect_keys=['lidar2img', 'intrinsics', 'extrinsics','timestamp', 'img_timestamp', 'ego_pose', 'ego_pose_inv', 'command', 'can_bus']
 input_modality = dict(
@@ -32,15 +33,15 @@ input_modality = dict(
     use_external=True)
 model = dict(
     type='Petr3D',
-    save_path='./12e_results_vlm_all/',
+    save_path='./results_planning_only/',  #save path for vlm models.
     use_grid_mask=True,
     frozen=False,
     use_lora=True,
-    tokenizer='ckpts/final/',
-    lm_head='ckpts/final/',
+    tokenizer=llm_path,
+    lm_head=llm_path, # set to None if don't use llm head
     img_backbone=dict(
         type='EVAViT',
-        img_size=640, #可以改
+        img_size=640, 
         patch_size=16,
         window_size=16,
         in_chans=3,
@@ -54,17 +55,17 @@ model = dict(
         qkv_bias=True,
         drop_path_rate=0.3,
         flash_attn=True,
-        with_cp=True, #可以改
-        frozen=False,), #可以改
+        with_cp=True, 
+        frozen=False,), 
     map_head=dict(
         type='PETRHeadM',
         num_classes=1,
         in_channels=1024,
         out_dims=4096,
         memory_len=600,
-        with_mask=True,
+        with_mask=True, # map query can't see vlm tokens
         topk_proposals=300,
-        num_lane=1800,   # 300+1500+num_extra
+        num_lane=1800,   # 300+1500
         num_lanes_one2one=300,
         k_one2many=5,
         lambda_one2many=1.0,
@@ -108,7 +109,7 @@ model = dict(
         topk_proposals=300,
         num_propagated=300,
         num_extra=256,
-        n_control=11,
+        n_control=11, # align with centerline query defination
         match_with_velo=False,
         scalar=10, ##noise groups
         noise_scale = 1.0, 
@@ -158,7 +159,7 @@ model = dict(
             )
 
 
-dataset_type = 'CustomNuScenesDatasetv2'
+dataset_type = 'CustomNuScenesDataset'
 data_root = './data/nuscenes/'
 
 file_client_args = dict(backend='disk')
@@ -186,7 +187,8 @@ train_pipeline = [
          base_vqa_path='./data/nuscenes/vqa/train/', 
          base_desc_path='./data/nuscenes/desc/train/',
          base_conv_path='./data/nuscenes/conv/train/',
-         tokenizer='ckpts/final/', 
+         base_key_path='./data/nuscenes/keywords/train/',
+         tokenizer=llm_path, 
          max_length=2048, 
          ignore_type=[],
          lane_objs_info="./data/nuscenes/lane_obj_train.pkl"),
@@ -205,9 +207,9 @@ test_pipeline = [
     dict(type='LoadAnnoatationVQATest', 
          base_vqa_path='./data/nuscenes/vqa/val/', 
          base_conv_path='./data/nuscenes/conv/val/',
-         base_counter_path=None,
-         load_type=["conv", "planning"],
-         tokenizer='ckpts/final/', 
+         base_counter_path='./data/nuscenes/eval_cf/',
+         load_type=["planning"], # please don't test all the questions in single test, it requires quite long time
+         tokenizer=llm_path, 
          max_length=2048,),
     dict(
         type='MultiScaleFlipAug3D',
@@ -258,7 +260,7 @@ data = dict(
     shuffler_sampler=dict(
         type='InfiniteGroupEachSampleInBatchSampler',
         seq_split_num=2,
-        warmup_split_num=10,
+        warmup_split_num=10, # lane det and vlm need short term temporal fusion in the early stage of training
         num_iters_to_seq=num_iters_per_epoch,
     ),
     nonshuffler_sampler=dict(type='DistributedSampler')
@@ -290,5 +292,5 @@ find_unused_parameters=False #### when use checkpoint, find_unused_parameters mu
 checkpoint_config = dict(interval=num_iters_per_epoch//2, max_keep_ckpts=3)
 runner = dict(
     type='IterBasedRunner', max_iters=num_epochs * num_iters_per_epoch)
-load_from='ckpts/eva02_petr_projv5.pth'
+load_from=None
 resume_from=None

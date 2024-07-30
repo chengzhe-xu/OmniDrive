@@ -39,7 +39,6 @@ def post_process_coords(corner_coords, imsize=(1600, 900)):
     if polygon_from_2d_box.intersects(img_canvas):
         img_intersection = polygon_from_2d_box.intersection(img_canvas)
 
-        # 只有当交集是Polygon时，我们才处理它
         if isinstance(img_intersection, Polygon):
             intersection_coords = np.array([coord for coord in img_intersection.exterior.coords])
             
@@ -51,7 +50,6 @@ def post_process_coords(corner_coords, imsize=(1600, 900)):
 
             return min_x, min_y, max_x, max_y
         else:
-            # 如果交集是LineString或Point，返回None
             return None
     else:
         return None
@@ -398,7 +396,6 @@ class PadMultiViewImage():
         return repr_str
 
 def format_number(n, decimal_places=1):
-    """格式化数字，保留指定位数的小数，并根据值添加或不添加正负号。"""
     if abs(round(n, decimal_places)) <= 1e-2:
          return 0.0
     else:
@@ -413,6 +410,7 @@ class LoadAnnoatationVQA():
             base_vqa_path, 
             base_desc_path, 
             base_conv_path,
+            base_key_path,
             tokenizer, 
             max_length, 
             n_gen=2, 
@@ -429,6 +427,7 @@ class LoadAnnoatationVQA():
         self.base_vqa_path = base_vqa_path
         self.base_desc_path = base_desc_path
         self.base_conv_path = base_conv_path
+        self.base_key_path = base_key_path
         self.lane_objs_info = pickle.load(open(lane_objs_info, 'rb'))
         CLASSES = ('car', 'truck', 'trailer', 'bus', 'construction_vehicle',
                'bicycle', 'motorcycle', 'pedestrian', 'traffic_cone',
@@ -455,30 +454,30 @@ class LoadAnnoatationVQA():
       
     def preprocess_vqa(self, results, traj):
         sources = []
-
-        with open("./data/nuscenes/keywords/train/" +results['sample_idx']+".json", 'r') as f:
-            action = json.load(f)
-        
-        sources.append(
-                    [
-                        {"from": 'human',
-                        "value": "Please shortly describe your driving action."},
-                        {"from": 'gpt',
-                        "value": action}
-                        ]
-                )
-        
-        with open(self.base_desc_path+results['sample_idx']+".json", 'r') as f:
-            desc = json.load(f)
-        question = random.sample(self.template, 1)[0]
-        sources.append(
-                    [
-                        {"from": 'human',
-                        "value": question},
-                        {"from": 'gpt',
-                        "value": desc["description"]}
-                        ]
-                )
+        if os.path.exists(self.base_key_path+results['sample_idx']+".json"):
+            with open(self.base_key_path+results['sample_idx']+".json", 'r') as f:
+                action = json.load(f)
+            
+            sources.append(
+                        [
+                            {"from": 'human',
+                            "value": "Please shortly describe your driving action."},
+                            {"from": 'gpt',
+                            "value": action}
+                            ]
+                    )
+        if os.path.exists(self.base_desc_path+results['sample_idx']+".json"):
+            with open(self.base_desc_path+results['sample_idx']+".json", 'r') as f:
+                desc = json.load(f)
+            question = random.sample(self.template, 1)[0]
+            sources.append(
+                        [
+                            {"from": 'human',
+                            "value": question},
+                            {"from": 'gpt',
+                            "value": desc["description"]}
+                            ]
+                    )
         if os.path.exists(self.base_vqa_path+results['sample_idx']+".json"):
             with open(self.base_vqa_path+results['sample_idx']+".json", 'r') as f:
                 data_qa = json.load(f)
@@ -506,7 +505,7 @@ class LoadAnnoatationVQA():
                 )
         return sources  
     
-    def extra_vqa(self, results):
+    def online_vqa(self, results):
         sources = []
         
         gt_bboxes_2d = []
@@ -689,8 +688,8 @@ class LoadAnnoatationVQA():
         sources = self.preprocess_vqa(results, traj)
         prompt = f"You are driving in {results['location']}. "
 
-        extra_sources = self.extra_vqa(results)
-        sources += extra_sources
+        online_sources = self.online_vqa(results)
+        sources += online_sources
 
         random.shuffle(sources)
         if 'gt_planning' in results.keys() and len(planning_traj) == 6:
@@ -759,7 +758,7 @@ class LoadAnnoatationVQATest():
         
     def preprocess_vqa(self, results):
         sources = []
-        if "planning" in self.load_type:
+        if "planning" in self.load_type: # planning trajs
             sources.append(
                     [
                         {"from": 'human',
@@ -768,16 +767,17 @@ class LoadAnnoatationVQATest():
                         "value": ""}
                         ]
                 )
-            # sources.append(
-            #         [
-            #             {"from": 'human',
-            #             "value": "Please shortly describe your driving action."},
-            #             {"from": 'gpt',
-            #             "value": ""}
-            #             ]
-            #     )
-        if "conv" in self.load_type:
-            question = random.sample(self.template, 1)[0]
+        if "short" in self.load_type: # short driving action
+            sources.append(
+                    [
+                        {"from": 'human',
+                        "value": "Please shortly describe your driving action."},
+                        {"from": 'gpt',
+                        "value": ""}
+                        ]
+                )
+        if "conv" in self.load_type: # conversation
+            question = random.sample(self.template, 1)[0] # detailed description
             sources.append(
                         [
                             {"from": 'human',
@@ -796,20 +796,20 @@ class LoadAnnoatationVQATest():
                             {"from": 'human',
                             "value": pair["question"]},
                             {"from": 'gpt',
-                            "value": pair["answer"]}
+                            "value": ""}
                             ]
                     )
-            if os.path.exists(self.base_vqa_path+results['sample_idx']+".json"):
+            if os.path.exists(self.base_vqa_path+results['sample_idx']+".json"): # attention + action + counter * 2
                 with open(self.base_vqa_path+results['sample_idx']+".json", 'r') as f:
                     data_qa = json.load(f)
                
-                for pair in data_qa[:2]:
+                for pair in data_qa:
                     sources.append(
                         [
                             {"from": 'human',
                             "value": pair["question"]},
                             {"from": 'gpt',
-                            "value": pair["answer"]}
+                            "value": ""}
                             ]
                     )
         if "counter" in self.load_type:

@@ -71,6 +71,7 @@ class StreamPETRHead(AnchorFreeHead):
                  num_propagated=256,
                  num_extra=256,
                  n_control=11,
+                 can_bus_len=2,
                  with_mask=False,
                  with_dn=True,
                  with_ego_pos=True,
@@ -172,6 +173,7 @@ class StreamPETRHead(AnchorFreeHead):
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         self.embed_dims = embed_dims
+        self.can_bus_len = can_bus_len
 
         self.scalar = scalar
         self.bbox_noise_scale = noise_scale
@@ -245,9 +247,10 @@ class StreamPETRHead(AnchorFreeHead):
             self.pseudo_reference_points = nn.Embedding(self.num_propagated, 3)
 
         self.query_embedding = nn.Embedding(self.num_extra, self.embed_dims)
+        
         if self.output_dims is not None:
             self.can_bus_embed = nn.Sequential(
-                nn.Linear(102, self.embed_dims*4),
+                nn.Linear(74, self.embed_dims*4), # canbus + command + egopose
                 nn.ReLU(),
                 nn.Linear(self.embed_dims*4, self.output_dims),
             )
@@ -291,7 +294,7 @@ class StreamPETRHead(AnchorFreeHead):
             self.memory_egopose = data['img_feats'].new_zeros(B, self.memory_len, 4, 4)
             self.memory_velo = data['img_feats'].new_zeros(B, self.memory_len, 2)
             self.sample_time = data['timestamp'].new_zeros(B)
-            self.memory_canbus = data['img_feats'].new_zeros(B, 4, 14)
+            self.memory_canbus = data['img_feats'].new_zeros(B, self.can_bus_len, 14)
             x = self.sample_time.to(data['img_feats'].dtype)
         else:
             self.memory_timestamp += data['timestamp'].unsqueeze(-1).unsqueeze(-1)
@@ -304,7 +307,7 @@ class StreamPETRHead(AnchorFreeHead):
             self.memory_embedding = memory_refresh(self.memory_embedding[:, :self.memory_len], x)
             self.memory_egopose = memory_refresh(self.memory_egopose[:, :self.memory_len], x)
             self.memory_velo = memory_refresh(self.memory_velo[:, :self.memory_len], x)
-            self.memory_canbus = memory_refresh(self.memory_canbus[:, :4], x)
+            self.memory_canbus = memory_refresh(self.memory_canbus[:, :self.can_bus_len], x)
             self.sample_time = data['timestamp'].new_zeros(B)
 
         

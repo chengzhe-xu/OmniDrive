@@ -236,7 +236,7 @@ def load_model(base_model, use_lora, frozen):
                 task_type="CAUSAL_LM")
         model = get_peft_model(model, peft_config)
 
-        for param in filter(lambda p: p.requires_grad,model.parameters()):
-            param.data = param.data.to(torch.float32)
+    for param in filter(lambda p: p.requires_grad,model.parameters()):
+        param.data = param.data.to(torch.float32)
                
     return model

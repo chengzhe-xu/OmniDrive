@@ -1,12 +1,19 @@
+**__pycache__**
 ckpts/
 data/
-onnx/
-engine/
+onnxs/
+onnxs_data/
+test/
+engines/
+results_planning_only/
+results_planning_only_*/
 
 .vscode
 *.ignore
 *.onnx
+*.engine
 *.nsys-rep
 *.tmp
 *.log
 *.pyc
+./data

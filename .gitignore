@@ -1,7 +1,7 @@
 **__pycache__**
 ckpts/
 data/
-onnxs/
+# onnxs/
 onnxs_data/
 test/
 engines/
@@ -10,7 +10,7 @@ results_planning_only_*/
 
 .vscode
 *.ignore
-*.onnx
+# *.onnx
 *.engine
 *.nsys-rep
 *.tmp

@@ -40,7 +40,7 @@ if __name__=='__main__':
         output_data[output_names[i]] = output_lst[i]
 
     for output_name in output_data.keys():
-        assert ref_output_data[output_name].shape == output_data[output_name].shape, "[ERROR] Shape miss-match."
+        assert ref_output_data[output_name].shape == output_data[output_name].shape, f"[ERROR] {output_name}: Shape miss-match."
         model_output = output_data[output_name].reshape(-1)
         pytorch_output = ref_output_data[output_name].reshape(-1)
         diff = np.abs(model_output - pytorch_output)

@@ -28,6 +28,9 @@ from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb1
 from projects.mmdet3d_plugin.models.utils.misc import MLN, topk_gather, transform_reference_points_lane, memory_refresh, SELayer_Linear
 import numpy as np
 from mmcv.cnn import xavier_init
+import numpy as np
+import os
+DUMP_ONNX_DATA = False
 
 @HEADS.register_module()
 class PETRHeadM(AnchorFreeHead):
@@ -315,7 +318,14 @@ class PETRHeadM(AnchorFreeHead):
         self.memory_timestamp -= data['timestamp'].unsqueeze(-1).unsqueeze(-1)
         self.sample_time -= data['timestamp']
         self.memory_egopose = data['ego_pose'].unsqueeze(1) @ self.memory_egopose
-        
+        print(f"[ONNX INFO]: rec_score_map.size = {rec_score.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(rec_score)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", data['sample_idx'], "rec_score_map.bin"))
+        print(f"[ONNX INFO]: topk_indexes_map.size = {topk_indexes.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(topk_indexes)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", data['sample_idx'], "topk_indexes_map.bin"))
         return out_memory
     
     def temporal_alignment(self, query_pos, tgt, reference_points):
@@ -383,6 +393,31 @@ class PETRHeadM(AnchorFreeHead):
                 head with normalized coordinate format (cx, cy, w, l, cz, h, theta, vx, vy). \
                 Shape [nb_dec, bs, num_lane, 9].
         """
+        if self.memory_embedding is not None:
+            print(f"[ONNX INFO]: memory_embedding_map_in.size = {self.memory_embedding.shape}")
+            if DUMP_ONNX_DATA:
+                onnx_dump_data = torch.clone(self.memory_embedding)
+                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_embedding_map_in.bin"))
+        if self.memory_reference_point is not None:
+            print(f"[ONNX INFO]: memory_reference_point_map_in.size = {self.memory_reference_point.shape}")
+            if DUMP_ONNX_DATA:
+                onnx_dump_data = torch.clone(self.memory_reference_point)
+                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_reference_point_map_in.bin"))
+        if self.memory_timestamp is not None:
+            print(f"[ONNX INFO]: memory_timestamp_map_in.size = {self.memory_timestamp.shape}")
+            if DUMP_ONNX_DATA:
+                onnx_dump_data = torch.clone(self.memory_timestamp)
+                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_timestamp_map_in.bin"))
+        if self.memory_egopose is not None:
+            print(f"[ONNX INFO]: memory_egopose_map_in.size = {self.memory_egopose.shape}")
+            if DUMP_ONNX_DATA:
+                onnx_dump_data = torch.clone(self.memory_egopose)
+                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_egopose_map_in.bin"))
+        if self.sample_time is not None:
+            print(f"[ONNX INFO]: sample_time_map_in.size = {self.sample_time.shape}")
+            if DUMP_ONNX_DATA:
+                onnx_dump_data = torch.clone(self.sample_time)
+                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "sample_time_map_in.bin"))
         self.pre_update_memory(data)
 
         x = data['img_feats']
@@ -454,6 +489,7 @@ class PETRHeadM(AnchorFreeHead):
         all_lane_preds_one2many = all_lane_preds[:, :, self.num_lanes_one2one:, :]
         outs_dec_one2one = outs_dec[:, :, 0: self.num_lanes_one2one, :]
         outs_dec_one2many = outs_dec[:, :, self.num_lanes_one2one:, :]
+        data['sample_idx'] = img_metas[0]['sample_idx']
         out_memory = self.post_update_memory(data, rec_ego_pose, all_lane_cls_one2one, all_lane_preds_one2one, outs_dec_one2one)
         outs = {
             'all_lane_cls_one2one': all_lane_cls_one2one,
@@ -465,6 +501,54 @@ class PETRHeadM(AnchorFreeHead):
         }
         if self.output_dims is not None:
             vlm_memory = self.output_projection(vlm_memory)
+        print(f"[ONNX INFO]: all_lane_cls_one2one.size = {all_lane_cls_one2one.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(all_lane_cls_one2one)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "all_lane_cls_one2one.bin"))
+        print(f"[ONNX INFO]: all_lane_preds_one2one.size = {all_lane_preds_one2one.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(all_lane_preds_one2one)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "all_lane_preds_one2one.bin"))
+        print(f"[ONNX INFO]: all_lane_cls_one2many.size = {all_lane_cls_one2many.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(all_lane_cls_one2many)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "all_lane_cls_one2many.bin"))
+        print(f"[ONNX INFO]: all_lane_preds_one2many.size = {all_lane_preds_one2many.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(all_lane_preds_one2many)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "all_lane_preds_one2many.bin"))
+        print(f"[ONNX INFO]: outs_dec_one2one.size = {outs_dec_one2one.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(outs_dec_one2one)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "outs_dec_one2one.bin"))
+        print(f"[ONNX INFO]: outs_dec_one2many.size = {outs_dec_one2many.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(outs_dec_one2many)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "outs_dec_one2many.bin"))
+        print(f"[ONNX INFO]: vlm_memory_map.size = {vlm_memory.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(vlm_memory)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "vlm_memory_map.bin"))
+        print(f"[ONNX INFO]: memory_embedding_map_out.size = {self.memory_embedding.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(self.memory_embedding)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_embedding_map_out.bin"))
+        print(f"[ONNX INFO]: memory_reference_point_map_out.size = {self.memory_reference_point.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(self.memory_reference_point)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_reference_point_map_out.bin"))
+        print(f"[ONNX INFO]: memory_timestamp_map_out.size = {self.memory_timestamp.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(self.memory_timestamp)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_timestamp_map_out.bin"))
+        print(f"[ONNX INFO]: memory_egopose_map_out.size = {self.memory_egopose.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(self.memory_egopose)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_egopose_map_out.bin"))
+        print(f"[ONNX INFO]: sample_time_map_out.size = {self.sample_time.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(self.sample_time)
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "sample_time_map_out.bin")) 
         return outs, vlm_memory
 
 

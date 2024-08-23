@@ -10,19 +10,16 @@ if __name__=='__main__':
     input_precision = np.float32
 
     graph = gs.import_onnx(onnx.load(onnx_pth))
-    # load_string = ""
+    load_string = ""
     input_data = {}
     for _in in graph.inputs:
         input_data[_in.name] = np.fromfile(
             os.path.join(data_pth, _in.name+".bin"),
             dtype=np.float32
         ).astype(input_precision).reshape(_in.shape)
-    #     load_string += f""""{_in.name}":{os.path.join(data_pth, _in.name+'.bin').replace("/data1/chengzhex/omnidrive-trt/omnidrive-deploy/omnidrive", ".")},"""
-    # print(load_string[:-1])
-    if "topk_indexes_bbox" in input_data.keys():
-        input_data["topk_indexes_bbox"] = input_data["topk_indexes_bbox"].astype(np.int64)
-    if "topk_indexes_map" in input_data.keys():
-        input_data["topk_indexes_map"] = input_data["topk_indexes_map"].astype(np.int64)
+        load_data_pth = "${DATA_PATH}/"+_in.name+".bin"
+        load_string += f""""{_in.name}":{load_data_pth},"""
+    print(load_string[:-1])
     
     ref_output_data = {}
     for _out in graph.outputs:

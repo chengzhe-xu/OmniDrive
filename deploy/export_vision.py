@@ -21,8 +21,8 @@ from mmdet.apis import set_random_seed
 from mmdet.datasets import replace_ImageToTensor
 from mmdet.models.utils.transformer import inverse_sigmoid
 import onnxruntime as ort
-from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb3d, pos2posemb1d, nerf_positional_encoding
-from projects.mmdet3d_plugin.models.utils.misc import MLN, topk_gather, transform_reference_points_lane, transform_reference_points, memory_refresh, SELayer_Linear
+from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb1d, nerf_positional_encoding
+from projects.mmdet3d_plugin.models.utils.misc import MLN, topk_gather, transform_reference_points_lane, transform_reference_points, memory_refresh
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -174,7 +174,6 @@ class OmniDriveVisionTrtProxy(torch.nn.Module):
         rec_timestamp = torch.zeros_like(rec_score, dtype=torch.float64)
 
         _, topk_indexes = torch.topk(rec_score, head.topk_proposals, dim=1)
-        # topk_indexes = topk_indexes_input
         rec_timestamp = topk_gather(rec_timestamp, topk_indexes)
         rec_reference_points = topk_gather(rec_reference_points, topk_indexes).detach()
         rec_memory = topk_gather(out_memory, topk_indexes).detach()
@@ -310,7 +309,6 @@ class OmniDriveVisionTrtProxy(torch.nn.Module):
         rec_timestamp = torch.zeros_like(rec_score, dtype=torch.float64)
 
         _, topk_indexes = torch.topk(rec_score, head.topk_proposals, dim=1)
-        # topk_indexes = topk_indexes_input
         rec_timestamp = topk_gather(rec_timestamp, topk_indexes)
         rec_reference_points = topk_gather(rec_reference_points, topk_indexes).detach()
         rec_memory = topk_gather(out_memory, topk_indexes).detach()
@@ -440,7 +438,6 @@ def main():
 
     model = MMDataParallel(model, device_ids=[torch.cuda.current_device()])
     model = model.float().cpu()
-    # model = model.half()
     model.eval()
     model.training = False
 
@@ -465,9 +462,6 @@ def main():
     memory_embedding_map_in = np.fromfile(os.path.join(dumped_input_pth, "memory_embedding_map_in.bin"), dtype=np.float32).astype(np.float32).reshape([1,900,256])
     memory_reference_point_map_in = np.fromfile(os.path.join(dumped_input_pth, "memory_reference_point_map_in.bin"), dtype=np.float32).astype(np.float32).reshape([1,900,11,3])
 
-    # topk_indexes_bbox = np.fromfile(os.path.join(dumped_input_pth, "topk_indexes_bbox.bin"), dtype=np.float32).astype(np.int64).reshape([1,300,1])
-    # topk_indexes_map = np.fromfile(os.path.join(dumped_input_pth, "topk_indexes_map.bin"), dtype=np.float32).astype(np.int64).reshape([1,300,1])
-
     proxy = OmniDriveVisionTrtProxy(model.module)
     args = [
         torch.from_numpy(img.astype(input_precision)).to(onnx_device),
@@ -489,9 +483,6 @@ def main():
         torch.from_numpy(memory_egopose_map_in.astype(input_precision)).to(onnx_device),
         torch.from_numpy(memory_embedding_map_in.astype(input_precision)).to(onnx_device),
         torch.from_numpy(memory_reference_point_map_in.astype(input_precision)).to(onnx_device),
-
-        # torch.from_numpy(topk_indexes_bbox.astype(np.int64)).to(onnx_device),
-        # torch.from_numpy(topk_indexes_map.astype(np.int64)).to(onnx_device),
     ]
     input_names = [
         "img", 
@@ -513,9 +504,6 @@ def main():
         "memory_egopose_map_in",
         "memory_embedding_map_in",
         "memory_reference_point_map_in",
-
-        # "topk_indexes_bbox", 
-        # "topk_indexes_map"
     ]
 
     output_names = [
@@ -540,9 +528,6 @@ def main():
         "memory_egopose_map_out",
         "memory_reference_point_map_out",
         "sample_time_map_out",
-
-        # "rec_score_bbox", 
-        # "rec_score_map"
     ]
 
     torch.onnx.export(

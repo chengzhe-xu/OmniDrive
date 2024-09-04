@@ -7,6 +7,9 @@ test/
 engines/
 results_planning_only/
 results_planning_only_*/
+deploy/llm_lib/llm_checkpoint/
+deploy/llm_lib/llm_engine/
+deploy/llm_lib/llm_safetensor/
 
 .vscode
 *.ignore

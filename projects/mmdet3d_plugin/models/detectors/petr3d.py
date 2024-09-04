@@ -440,6 +440,11 @@ class Petr3D(MVXTwoStageDetector):
             lane_results = self.map_head.get_bboxes(outs, img_metas)
 
         generated_text = []
+        for iQ in range(len(data['input_ids'][0])):
+            print(f"[ONNX INFO]: input_ids_{iQ}.size = {data['input_ids'][0][iQ].shape}")
+            if DUMP_ONNX_DATA:
+                onnx_dump_data = torch.clone(data['input_ids'][0][iQ])
+                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], f"input_ids_{iQ}.bin"))
         if self.with_lm_head and not os.path.exists(self.save_path+img_metas[0]['sample_idx']) :
             mmcv.mkdir_or_exist(self.save_path)
             vision_embeded = torch.cat([vision_embeded_obj, vision_embeded_map], dim=1)

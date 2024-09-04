@@ -53,7 +53,6 @@ class Runner:
                 continue
             im_token_ids = torch.where(cur_input_ids == self.IMAGE_TOKEN_INDEX)[0].tolist()
             im_token_ids = [-1] + im_token_ids + [cur_input_ids.shape[0]]
-            # should check if n_im == n_emb?
             im_idx = 0
             for i in range(len(im_token_ids) - 1):
                 updated_input_ids.append(cur_input_ids[im_token_ids[i]+1:im_token_ids[i+1]])
@@ -69,12 +68,10 @@ class Runner:
         input_ids, prompt_table = self.image_to_ptuning(input_ids, vision_embeded)
         input_ids = input_ids.contiguous().to(dtype=torch.int32)
         prompt_table = prompt_table.cuda().contiguous().to(dtype=torch.float16)
-        prompt_table_path = "./deploy/llm_lib/prompt_table.npy"
-        np.save(prompt_table_path, prompt_table.cpu())
         t_start = time.time()
         output_ids = self.model.generate(
             input_ids, 
-            prompt_table_path=prompt_table_path,
+            prompt_table=prompt_table,
             end_id=self.tokenizer.eos_token_id,
             pad_id=self.tokenizer.pad_token_id,
             do_sample=True,
@@ -84,7 +81,6 @@ class Runner:
             max_new_tokens=320,
             use_cache=False)
         print(f"Generation time: {time.time() - t_start}s.")
-        os.remove(prompt_table_path)
         output_ids = torch.masked_select(output_ids, output_ids.lt(self.tokenizer.vocab_size)).reshape([1, -1])
         return output_ids
 

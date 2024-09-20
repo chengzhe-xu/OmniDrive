@@ -350,8 +350,9 @@ class OmniDriveVisionTrtProxy(torch.nn.Module):
                                      memory_timestamp_map, sample_time_map, memory_egopose_map, 
                                      memory_embedding_map, memory_reference_point_map)
         
-        return all_cls_scores, all_bbox_preds, vlm_memory_bbox, \
-            all_lane_cls_one2one, all_lane_preds_one2one, all_lane_cls_one2many, all_lane_preds_one2many, outs_dec_one2one, outs_dec_one2many, vlm_memory_map, \
+        vision_embeded = torch.cat([vlm_memory_bbox, vlm_memory_map], dim=1)
+        return vision_embeded, all_cls_scores, all_bbox_preds, \
+            all_lane_cls_one2one, all_lane_preds_one2one, all_lane_cls_one2many, all_lane_preds_one2many, outs_dec_one2one, outs_dec_one2many, \
             memory_embedding_bbox, memory_reference_point_bbox, memory_timestamp_bbox, memory_egopose_bbox, memory_canbus_bbox, sample_time_bbox, \
             memory_embedding_map, memory_timestamp_map, memory_egopose_map, memory_reference_point_map, sample_time_map
 
@@ -507,16 +508,15 @@ def main():
     ]
 
     output_names = [
+        "vision_embeded",
         "all_cls_scores", 
-        "all_bbox_preds", 
-        "vlm_memory_bbox", 
+        "all_bbox_preds",  
         "all_lane_cls_one2one",
         "all_lane_preds_one2one",
         "all_lane_cls_one2many",
         'all_lane_preds_one2many',
         "outs_dec_one2one",
         "outs_dec_one2many",
-        "vlm_memory_map",
         "memory_embedding_bbox_out", 
         "memory_reference_point_bbox_out", 
         "memory_timestamp_bbox_out", 

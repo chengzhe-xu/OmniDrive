@@ -19,14 +19,27 @@ if __name__=='__main__':
         ).astype(input_precision).reshape(_in.shape)
         load_data_pth = "${DATA_PATH}/"+_in.name+".bin"
         load_string += f""""{_in.name}":{load_data_pth},"""
-    print(load_string[:-1])
+    # print(load_string[:-1])
     
     ref_output_data = {}
     for _out in graph.outputs:
-        ref_output_data[_out.name] = np.fromfile(
-            os.path.join(data_pth, _out.name+".bin"),
-            dtype=np.float32
-        ).astype(input_precision).reshape(_out.shape)
+        if _out.name not in ["vision_embeded"]:
+            ref_output_data[_out.name] = np.fromfile(
+                os.path.join(data_pth, _out.name+".bin"),
+                dtype=np.float32
+            ).astype(input_precision).reshape(_out.shape)
+        else:
+            ref_output_data["vlm_memory_bbox"] = np.fromfile(
+                os.path.join(data_pth, "vlm_memory_bbox.bin"),
+                dtype=np.float32
+            ).astype(input_precision).reshape([1,257,2048])
+            ref_output_data["vlm_memory_map"] = np.fromfile(
+                os.path.join(data_pth, "vlm_memory_map.bin"),
+                dtype=np.float32
+            ).astype(input_precision).reshape([1,256,2048])
+            ref_output_data["vision_embeded"] = np.concatenate(
+                [ref_output_data["vlm_memory_bbox"], ref_output_data["vlm_memory_map"]], 
+                axis=1)
         
     output_names = [_out.name for _out in graph.outputs]
     output_lst = ort.InferenceSession(onnx_pth).run(None, input_data)

@@ -25,8 +25,7 @@ from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb1
 from projects.mmdet3d_plugin.models.utils.misc import MLN, topk_gather, transform_reference_points_lane, transform_reference_points, memory_refresh
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description='OmniDrive OOX export(Vision part).')
+    parser = argparse.ArgumentParser(description='OmniDrive ONNX export(Vision part).')
     parser.add_argument('config',help='test config file path')
     parser.add_argument('checkpoint', help='checkpoint file', default=None)
     parser.add_argument(

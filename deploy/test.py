@@ -49,17 +49,6 @@ class InferTrt(object):
         self.curr_scene_token = None
         self.start_timestamp = None
         self.bindings = {}
-        self.position_range = torch.nn.Parameter(torch.tensor(
-            [-61.2, -61.2, -10.0, 61.2, 61.2, 10.0], device='cuda:0'), requires_grad=False)
-        self.coords_d = torch.nn.Parameter(torch.tensor(
-            [ 1.0000,  1.0289,  1.0868,  1.1737,  1.2894,  1.4341,  1.6078,  1.8104,
-            2.0419,  2.3024,  2.5918,  2.9102,  3.2575,  3.6337,  4.0389,  4.4731,
-            4.9362,  5.4282,  5.9491,  6.4990,  7.0779,  7.6857,  8.3224,  8.9881,
-            9.6827, 10.4062, 11.1587, 11.9402, 12.7506, 13.5899, 14.4582, 15.3554,
-            16.2815, 17.2366, 18.2207, 19.2337, 20.2756, 21.3464, 22.4463, 23.5750,
-            24.7327, 25.9193, 27.1349, 28.3794, 29.6529, 30.9553, 32.2866, 33.6469,
-            35.0362, 36.4543, 37.9014, 39.3775, 40.8825, 42.4164, 43.9793, 45.5712,
-            47.1919, 48.8416, 50.5203, 52.2279, 53.9644, 55.7299, 57.5243, 59.3477], device='cuda:0'), requires_grad=False)
         self.bbox_coder = NMSFreeCoder(
             pc_range=[-51.2, -51.2, -5.0, 51.2, 51.2, 3.0],
             voxel_size=[0.2, 0.2, 8],
@@ -100,74 +89,6 @@ class InferTrt(object):
         with open(path, "rb") as fp:
             self.buf = fp.read()
         self._build_engine()
-    
-    def prepare_location(self, img_metas):
-        pad_h, pad_w, _ = img_metas[0]['pad_shape'][0]
-        bs, n = 1, 6
-        location = self.locations(16, pad_h, pad_w)[None].repeat(bs*n, 1, 1, 1)
-        return location
-
-    def locations(self, stride, pad_h, pad_w):
-        """
-        Arguments:
-            features:  (N, C, H, W)
-        Return:
-            locations:  (H, W, 2)
-        """
-
-        h, w = 40, 40
-        device = "cuda:0"
-        shifts_x = (torch.arange(
-            0, stride*w, step=stride,
-            dtype=torch.float32, device=device
-        ) + stride // 2 ) / pad_w
-        shifts_y = (torch.arange(
-            0, h * stride, step=stride,
-            dtype=torch.float32, device=device
-        ) + stride // 2) / pad_h
-        shift_y, shift_x = torch.meshgrid(shifts_y, shifts_x)
-        shift_x = shift_x.reshape(-1)
-        shift_y = shift_y.reshape(-1)
-        locations = torch.stack((shift_x, shift_y), dim=1)
-        locations = locations.reshape(h, w, 2)
-        return locations
-    
-    def position_embeding(self, memory_centers, img_metas, intrinsics, lidar2img):
-        eps = 1e-5
-        BN, H, W, _ = memory_centers.shape
-        B = intrinsics.size(0)
-
-        intrinsic = torch.stack([intrinsics[..., 0, 0], intrinsics[..., 1, 1]], dim=-1)
-        intrinsic = torch.abs(intrinsic) / 1e3
-        intrinsic = intrinsic.repeat(1, H*W, 1).view(B, -1, 2)
-        LEN = intrinsic.size(1)
-
-        num_sample_tokens = LEN
-
-        pad_h, pad_w, _ = img_metas[0]['pad_shape'][0]
-        memory_centers[..., 0] = memory_centers[..., 0] * pad_w
-        memory_centers[..., 1] = memory_centers[..., 1] * pad_h
-
-        D = self.coords_d.shape[0]
-
-        memory_centers = memory_centers.detach().view(B, LEN, 1, 2)
-        topk_centers = memory_centers.repeat(1, 1, D, 1)
-        coords_d = self.coords_d.view(1, 1, D, 1).repeat(B, num_sample_tokens, 1 , 1)
-        coords = torch.cat([topk_centers, coords_d], dim=-1)
-        coords = torch.cat((coords, torch.ones_like(coords[..., :1])), -1)
-        coords[..., :2] = coords[..., :2] * torch.maximum(coords[..., 2:3], torch.ones_like(coords[..., 2:3])*eps)
-
-        coords = coords.unsqueeze(-1)
-
-        img2lidars = lidar2img.inverse()
-        img2lidars = img2lidars.view(BN, 1, 1, 4, 4).repeat(1, H*W, D, 1, 1).view(B, LEN, D, 4, 4)
-
-        coords3d = torch.matmul(img2lidars, coords).squeeze(-1)[..., :3]
-        coords3d[..., 0:3] = (coords3d[..., 0:3] - self.position_range[0:3]) / (self.position_range[3:6] - self.position_range[0:3])
-        coords3d = coords3d.reshape(B, -1, D*3)
-      
-        pos_embed  = inverse_sigmoid(coords3d)
-        return pos_embed
 
     def get_bbox(self, all_cls_scores, all_bbox_preds, img_metas):
         bbox_results = []
@@ -249,16 +170,16 @@ class InferTrt(object):
     def __call__(self, img_metas, input_ids, img, lidar2img, intrinsics, extrinsics, timestamp, img_timestamp, 
                 ego_pose, ego_pose_inv, command, can_bus,
                 return_loss=False, rescale=True):
-        data_dict = {
-            "img_metas": img_metas, "input_ids": input_ids, "img": img, "lidar2img": lidar2img, 
-            "intrinsics": intrinsics, "extrinsics": extrinsics, "timestamp": timestamp, "img_timestamp": img_timestamp, 
-            "ego_pose": ego_pose, "ego_pose_inv": ego_pose_inv, "command": command, "can_bus": can_bus,
-        }
-        if self.torch_ref_model is not None:            
+        if self.torch_ref_model is not None:
+            data_dict = {
+                "img_metas": img_metas, "input_ids": input_ids, "img": img, "lidar2img": lidar2img, 
+                "intrinsics": intrinsics, "extrinsics": extrinsics, "timestamp": timestamp, "img_timestamp": img_timestamp, 
+                "ego_pose": ego_pose, "ego_pose_inv": ego_pose_inv, "command": command, "can_bus": can_bus,
+            }
             ref_result_list = self.torch_ref_model(return_loss=False, rescale=True, **data_dict)
         else:
             ref_result_list = None
-        result_list = self.forward(img_metas=img_metas, 
+        return self.forward(img_metas=img_metas, 
                             input_ids=input_ids, 
                             img=img, 
                             lidar2img=lidar2img, 
@@ -268,7 +189,6 @@ class InferTrt(object):
                             ego_pose_inv=ego_pose_inv, 
                             command=command, 
                             can_bus=can_bus)
-        return result_list
 
     def forward(self, img_metas, input_ids, img, lidar2img, intrinsics, timestamp, 
                 ego_pose, ego_pose_inv, command, can_bus):
@@ -279,7 +199,7 @@ class InferTrt(object):
         img_metas = img_metas[0].data[0]
         input_ids = input_ids[0].data[0]
         img = img[0].data[0].to(device="cuda:0").contiguous()
-        lidar2img = lidar2img[0].data[0][0].unsqueeze(0).to(device="cuda:0")
+        img2lidar = lidar2img[0].data[0][0].unsqueeze(0).to(device="cuda:0").inverse()
         intrinsics = intrinsics[0].data[0][0].unsqueeze(0).to(device="cuda:0")
         timestamp = timestamp[0].data[0][0].unsqueeze(0)
         ego_pose = ego_pose[0].data[0][0].unsqueeze(0).to(device="cuda:0").contiguous()
@@ -295,12 +215,11 @@ class InferTrt(object):
             is_first_frame = torch.zeros([1]).to(device="cuda:0").contiguous()
         timestamp -= self.start_timestamp
         timestamp = timestamp.type(torch.float32).to(device="cuda:0").contiguous()
-        location = self.prepare_location(img_metas)
-        pos_embed_input = self.position_embeding(location, img_metas, intrinsics, lidar2img)
 
         # copy the input values to the binding buffer
         self.bindings["img"].copy_(img)
-        self.bindings["pos_embed_input"].copy_(pos_embed_input.type(torch.float32).to(device="cuda:0").contiguous())
+        # self.bindings["intrinsics"].copy_(intrinsics.type(torch.float32).to(device="cuda:0").contiguous())
+        self.bindings["img2lidars"].copy_(img2lidar.type(torch.float32).to(device="cuda:0").contiguous())
         self.bindings["command"].copy_(command)
         self.bindings["can_bus"].copy_(can_bus)
         self.bindings["is_first_frame"].copy_(is_first_frame)
@@ -536,7 +455,7 @@ def main():
     # model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
     # fp16_cfg = cfg.get('fp16', None)
     # if fp16_cfg is not None:
-        # wrap_fp16_model(model)
+    #     wrap_fp16_model(model)
     # checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
     # if args.fuse_conv_bn:
     #     model = fuse_conv_bn(model)

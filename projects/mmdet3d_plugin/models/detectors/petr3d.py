@@ -416,6 +416,15 @@ class Petr3D(MVXTwoStageDetector):
 
     def simple_test_pts(self, img_metas, **data):
         """Test function of point cloud branch."""
+        print(f"[ONNX INFO]: intrinsics.size = {data['intrinsics'].shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(data['intrinsics'])
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "intrinsics.bin"))
+        img2lidars_to_dump = data['lidar2img'].inverse()
+        print(f"[ONNX INFO]: img2lidars.size = {img2lidars_to_dump.shape}")
+        if DUMP_ONNX_DATA:
+            onnx_dump_data = torch.clone(data['lidar2img'].inverse())
+            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "img2lidars.bin"))
         #check
         location = self.prepare_location(img_metas, **data)
         outs_roi = self.forward_roi_head(location, **data)

@@ -65,6 +65,68 @@ class OmniDriveVisionTrtProxy(torch.nn.Module):
         super().__init__(*args, **kwargs)
         self.mod = mod
     
+    def locations(self, stride, pad_h, pad_w):
+        """
+        Arguments:
+            features:  (N, C, H, W)
+        Return:
+            locations:  (H, W, 2)
+        """
+
+        h, w = 40, 40
+        device = "cpu"
+        shifts_x = (torch.arange(
+            0, stride*w, step=stride,
+            dtype=torch.float32, device=device
+        ) + stride // 2 ) / pad_w
+        shifts_y = (torch.arange(
+            0, h * stride, step=stride,
+            dtype=torch.float32, device=device
+        ) + stride // 2) / pad_h
+        shift_y, shift_x = torch.meshgrid(shifts_y, shifts_x)
+        shift_x = shift_x.reshape(-1)
+        shift_y = shift_y.reshape(-1)
+        locations = torch.stack((shift_x, shift_y), dim=1)
+        locations = locations.reshape(h, w, 2)
+        return locations
+    
+    def pos_embedding(self, intrinsics, img2lidars):
+        pad_h, pad_w, _ = (640, 640, 3)
+        memory_centers = self.locations(16, pad_h, pad_w)[None].repeat(1*6, 1, 1, 1)
+
+        eps = 1e-5
+        BN, H, W, _ = memory_centers.shape
+        B = intrinsics.size(0)
+
+        intrinsic = torch.stack([intrinsics[..., 0, 0], intrinsics[..., 1, 1]], dim=-1)
+        intrinsic = torch.abs(intrinsic) / 1e3
+        intrinsic = intrinsic.repeat(1, H*W, 1).view(B, -1, 2)
+        LEN = intrinsic.size(1)
+
+        num_sample_tokens = LEN
+        memory_centers[..., 0] = memory_centers[..., 0] * pad_w
+        memory_centers[..., 1] = memory_centers[..., 1] * pad_h
+
+        D = self.mod.coords_d.shape[0]
+
+        memory_centers = memory_centers.detach().view(B, LEN, 1, 2)
+        topk_centers = memory_centers.repeat(1, 1, D, 1)
+        coords_d = self.mod.coords_d.view(1, 1, D, 1).repeat(B, num_sample_tokens, 1 , 1)
+        coords = torch.cat([topk_centers, coords_d], dim=-1)
+        coords = torch.cat((coords, torch.ones_like(coords[..., :1])), -1)
+        coords[..., :2] = coords[..., :2] * torch.maximum(coords[..., 2:3], torch.ones_like(coords[..., 2:3])*eps)
+
+        coords = coords.unsqueeze(-1)
+
+        img2lidars = img2lidars.view(BN, 1, 1, 4, 4).repeat(1, H*W, D, 1, 1).view(B, LEN, D, 4, 4)
+
+        coords3d = torch.matmul(img2lidars, coords).squeeze(-1)[..., :3]
+        coords3d[..., 0:3] = (coords3d[..., 0:3] - self.mod.position_range[0:3]) / (self.mod.position_range[3:6] - self.mod.position_range[0:3])
+        coords3d = coords3d.reshape(B, -1, D*3)
+      
+        pos_embed  = inverse_sigmoid(coords3d)
+        return pos_embed
+
     def mapPETR_forward(self, img_feats, pos_embed, timestamp, ego_pose, ego_pose_inv, is_first_frame,
                         memory_timestamp, sample_time, memory_egopose, memory_embedding, memory_reference_point):
         head = self.mod.map_head
@@ -326,13 +388,14 @@ class OmniDriveVisionTrtProxy(torch.nn.Module):
         return all_cls_scores, all_bbox_preds, vlm_memory, \
             memory_embedding, memory_reference_point, memory_timestamp, memory_egopose, memory_canbus, sample_time
 
-    def forward(self, img, pos_embed_input, command, can_bus, is_first_frame, ego_pose, timestamp, ego_pose_inv,
+    def forward(self, img, intrinsics, img2lidars, command, can_bus, is_first_frame, ego_pose, timestamp, ego_pose_inv,
                 memory_embedding_bbox, memory_reference_point_bbox, memory_timestamp_bbox,
                 memory_egopose_bbox, memory_canbus_bbox, sample_time_bbox,
                 memory_timestamp_map, sample_time_map, memory_egopose_map, 
                 memory_embedding_map, memory_reference_point_map):
         
         img_feats = self.mod.extract_img_feat(img)
+        pos_embed_input = self.pos_embedding(intrinsics=intrinsics, img2lidars=img2lidars)
         pos_embed = self.mod.position_encoder(pos_embed_input)
 
         all_cls_scores, all_bbox_preds, vlm_memory_bbox, \
@@ -443,7 +506,8 @@ def main():
 
     dumped_input_pth = "./onnxs_data/4f9ad42bb4a24970b770ba0a87baf47a/"
     img = np.fromfile(os.path.join(dumped_input_pth, "img.bin"), dtype=np.float32).astype(np.float32).reshape([1,6,3,640,640])
-    pos_embed_input = np.fromfile(os.path.join(dumped_input_pth, "pos_embed_input.bin"), dtype=np.float32).astype(np.float32).reshape([1,9600,192])
+    intrinsics = np.fromfile(os.path.join(dumped_input_pth, "intrinsics.bin"), dtype=np.float32).astype(np.float32).reshape([1,6,4,4])
+    img2lidars = np.fromfile(os.path.join(dumped_input_pth, "img2lidars.bin"), dtype=np.float32).astype(np.float32).reshape([1,6,4,4])
     command = np.fromfile(os.path.join(dumped_input_pth, "command.bin"), dtype=np.float32).astype(np.float32).reshape([1])
     can_bus = np.fromfile(os.path.join(dumped_input_pth, "can_bus.bin"), dtype=np.float32).astype(np.float32).reshape([1,13])
     is_first_frame = np.fromfile(os.path.join(dumped_input_pth, "is_first_frame.bin"), dtype=np.float32).astype(np.float32).reshape([1])
@@ -465,7 +529,8 @@ def main():
     proxy = OmniDriveVisionTrtProxy(model.module)
     args = [
         torch.from_numpy(img.astype(input_precision)).to(onnx_device),
-        torch.from_numpy(pos_embed_input.astype(input_precision)).to(onnx_device),
+        torch.from_numpy(intrinsics.astype(input_precision)).to(onnx_device),
+        torch.from_numpy(img2lidars.astype(input_precision)).to(onnx_device),
         torch.from_numpy(command.astype(input_precision)).to(onnx_device),
         torch.from_numpy(can_bus.astype(input_precision)).to(onnx_device),
         torch.from_numpy(is_first_frame.astype(input_precision)).to(onnx_device),
@@ -486,7 +551,8 @@ def main():
     ]
     input_names = [
         "img", 
-        "pos_embed_input", 
+        "intrinsics", 
+        "img2lidars", 
         "command", 
         "can_bus", 
         "is_first_frame", 

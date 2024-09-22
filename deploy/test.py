@@ -9,13 +9,17 @@ import os
 import torch
 import warnings
 from mmcv import Config, DictAction
-from mmcv.runner import get_dist_info, init_dist
+from mmcv.cnn import fuse_conv_bn
+from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
+from mmcv.runner import get_dist_info, init_dist, load_checkpoint, wrap_fp16_model
 from mmdet3d.apis import single_gpu_test
 from mmdet3d.datasets import build_dataset
 from projects.mmdet3d_plugin.datasets.builder import build_dataloader
+from mmdet3d.models import build_model
 from mmdet.models.utils.transformer import inverse_sigmoid
 from mmdet.apis import set_random_seed
 from mmdet3d.core import bbox3d2result
+from projects.mmdet3d_plugin.core.apis.test import custom_multi_gpu_test
 from projects.mmdet3d_plugin.core.bbox.coders.nms_free_coder import NMSFreeCoder
 from mmdet.datasets import replace_ImageToTensor
 import time
@@ -25,7 +29,7 @@ import os.path as osp
 
 
 class InferTrt(object):
-    def __init__(self, logger):        
+    def __init__(self, logger, torch_ref_model=None):        
         self.cuda_ctx = cuda.Device(0).retain_primary_context()
         self.cuda_ctx.push()
 
@@ -64,6 +68,7 @@ class InferTrt(object):
             score_threshold=None,
             num_classes=10
         )
+        self.torch_ref_model = torch_ref_model
 
     
     def from_onnx(self, onnx_mod):
@@ -210,6 +215,8 @@ class InferTrt(object):
         return result_list
     
     def eval(self):
+        if self.torch_ref_model is not None:            
+            self.torch_ref_model.eval()
         if len(self.bindings) == 0:
             create_bindings_tensor = True
         else:
@@ -242,7 +249,16 @@ class InferTrt(object):
     def __call__(self, img_metas, input_ids, img, lidar2img, intrinsics, extrinsics, timestamp, img_timestamp, 
                 ego_pose, ego_pose_inv, command, can_bus,
                 return_loss=False, rescale=True):
-        return self.forward(img_metas=img_metas, 
+        data_dict = {
+            "img_metas": img_metas, "input_ids": input_ids, "img": img, "lidar2img": lidar2img, 
+            "intrinsics": intrinsics, "extrinsics": extrinsics, "timestamp": timestamp, "img_timestamp": img_timestamp, 
+            "ego_pose": ego_pose, "ego_pose_inv": ego_pose_inv, "command": command, "can_bus": can_bus,
+        }
+        if self.torch_ref_model is not None:            
+            ref_result_list = self.torch_ref_model(return_loss=False, rescale=True, **data_dict)
+        else:
+            ref_result_list = None
+        result_list = self.forward(img_metas=img_metas, 
                             input_ids=input_ids, 
                             img=img, 
                             lidar2img=lidar2img, 
@@ -252,6 +268,7 @@ class InferTrt(object):
                             ego_pose_inv=ego_pose_inv, 
                             command=command, 
                             can_bus=can_bus)
+        return result_list
 
     def forward(self, img_metas, input_ids, img, lidar2img, intrinsics, timestamp, 
                 ego_pose, ego_pose_inv, command, can_bus):
@@ -272,6 +289,7 @@ class InferTrt(object):
         # convert timestamp from fp64 to fp32
         if self.curr_scene_token is None or img_metas[0]["scene_token"] != self.curr_scene_token:
             self.start_timestamp = timestamp[0].item()
+            self.curr_scene_token = img_metas[0]["scene_token"]
             is_first_frame = torch.ones([1]).to(device="cuda:0").contiguous()
         else:
             is_first_frame = torch.zeros([1]).to(device="cuda:0").contiguous()
@@ -343,7 +361,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description='MMDet test (and eval) an engine')
     parser.add_argument('--config',help='test config file path')
     parser.add_argument('--engine_pth', help='engine file path')
+    parser.add_argument('--checkpoint', help='checkpoint file', type=str, default='')
     parser.add_argument('--out', help='output result file in pickle format')
+    parser.add_argument(
+        '--fuse-conv-bn',
+        action='store_true',
+        help='Whether to fuse conv and bn, this will slightly increase'
+        'the inference speed')
     parser.add_argument(
         '--format-only',
         action='store_true',
@@ -466,6 +490,7 @@ def main():
     if cfg.get('cudnn_benchmark', False):
         torch.backends.cudnn.benchmark = True
 
+    # cfg.model.pretrained = None
     # in case the test dataset is concatenated
     samples_per_gpu = 1
     if isinstance(cfg.data.test, dict):
@@ -506,15 +531,45 @@ def main():
         nonshuffler_sampler=cfg.data.nonshuffler_sampler,
     )
 
+    # build the model and load checkpoint
+    # cfg.model.train_cfg = None
+    # model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
+    # fp16_cfg = cfg.get('fp16', None)
+    # if fp16_cfg is not None:
+        # wrap_fp16_model(model)
+    # checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
+    # if args.fuse_conv_bn:
+    #     model = fuse_conv_bn(model)
+    # # old versions did not save class info in checkpoints, this walkaround is
+    # # for backward compatibility
+    # if 'CLASSES' in checkpoint.get('meta', {}):
+    #     model.CLASSES = checkpoint['meta']['CLASSES']
+    # else:
+    #     model.CLASSES = dataset.CLASSES
+    # # palette for visualization in segmentation tasks
+    # if 'PALETTE' in checkpoint.get('meta', {}):
+    #     model.PALETTE = checkpoint['meta']['PALETTE']
+    # elif hasattr(dataset, 'PALETTE'):
+    #     # segmentation dataset has `PALETTE` attribute
+    #     model.PALETTE = dataset.PALETTE
+    
     # build the engine
     logger = trt.Logger(trt.Logger.VERBOSE)
     engine = InferTrt(logger)
     engine.read(args.engine_pth)
 
     if not distributed:
-        outputs = single_gpu_test(engine, data_loader, show=False, out_dir=None,)
+        assert False
+        # model = MMDataParallel(model, device_ids=[0])
+        # outputs = single_gpu_test(model, data_loader, args.show, args.show_dir)
     else:
-        assert False, "TensorRT inference do not support distributed launch."
+        # model = MMDistributedDataParallel(
+        #     model.cuda(),
+        #     device_ids=[torch.cuda.current_device()],
+        #     broadcast_buffers=False)
+        # engine.torch_ref_model = model
+        outputs = custom_multi_gpu_test(engine, data_loader, args.tmpdir,
+                                        args.gpu_collect)
 
     rank, _ = get_dist_info()
     if rank == 0:

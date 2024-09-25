@@ -17,4 +17,7 @@ python3 -m torch.distributed.launch \
     --engine_pth ./engines/eva_base_tinyllama_.engine \
     --eval bbox \
     --config ./projects/configs/OmniDrive/eva_base_tinyllama.py \
-    --launcher pytorch
+    --launcher pytorch \
+    --llm_engine_pth ./deploy/llm_lib/llm_engine_0.13_new/x86_1gpu_afp16_wi4/ \
+    --tokenizer_pth ../omnidrive_tiny_pretrain/pretrain_tiny/ \
+    --qa_save_path ./results_planning_only_vision_fp32_llm_fp16/

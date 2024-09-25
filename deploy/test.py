@@ -26,10 +26,82 @@ import time
 import tensorrt as trt
 import pycuda.driver as cuda
 import os.path as osp
+import numpy as np
+import tensorrt_llm
+import tensorrt_llm.profiler as profiler
+from tensorrt_llm import logger
+from tensorrt_llm.runtime import ModelRunner
+from transformers import AutoTokenizer
+import json
+
+
+class InferTrtLLM(object):
+    def __init__(self, llm_engine_pth, tokenizer_pth) -> None:
+        device_id = 0
+        self.IMAGE_TOKEN_INDEX = -200
+        self.llm_engine_pth = llm_engine_pth
+        torch.cuda.set_device(device_id)
+        self.device = "cuda:%d" % (device_id)
+        self.stream = torch.cuda.Stream(torch.cuda.current_device())
+        torch.cuda.set_stream(self.stream)
+
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_pth, model_max_length=2048, padding_side="right", use_fast=False,)
+        tokenizer.pad_token = tokenizer.unk_token
+        tokenizer.padding_side = "right"
+        self.tokenizer = tokenizer
+        self.model_type = "llava_llama"
+        self.init_llm()
+    
+    def init_llm(self):
+        self.model = ModelRunner.from_dir(str(self.llm_engine_pth), rank=0, debug_mode=False, stream=self.stream)
+        self.model_config = self.model.session._model_config
+        self.runtime_mapping = self.model.session.mapping
+
+    def image_to_ptuning(self, input_ids, vision_embeded):
+        updated_input_ids = []
+        current_vocab_size = self.tokenizer.vocab_size
+        for batch_idx, cur_input_ids in enumerate(input_ids):
+            num_images = (cur_input_ids == self.IMAGE_TOKEN_INDEX).sum()
+            if num_images == 0:
+                updated_input_ids.append(cur_input_ids)
+                continue
+            im_token_ids = torch.where(cur_input_ids == self.IMAGE_TOKEN_INDEX)[0].tolist()
+            im_token_ids = [-1] + im_token_ids + [cur_input_ids.shape[0]]
+            im_idx = 0
+            for i in range(len(im_token_ids) - 1):
+                updated_input_ids.append(cur_input_ids[im_token_ids[i]+1:im_token_ids[i+1]])
+                if im_idx < vision_embeded.shape[0]:
+                    im = vision_embeded[im_idx]
+                    im_size = im.shape[0]
+                    im_indices = torch.from_numpy(np.arange(current_vocab_size, current_vocab_size + im_size)).cuda()
+                    updated_input_ids.append(im_indices)
+                    im_idx += 1
+        return torch.cat(updated_input_ids).unsqueeze(0), vision_embeded.reshape(1, -1, vision_embeded.shape[2])
+
+    def generate(self, input_ids, vision_embeded):
+        input_ids, prompt_table = self.image_to_ptuning(input_ids, vision_embeded)
+        input_ids = input_ids.contiguous().to(dtype=torch.int32)
+        prompt_table = prompt_table.cuda().contiguous().to(dtype=torch.float16)
+        t_start = time.time()
+        output_ids = self.model.generate(
+            input_ids, 
+            prompt_table=prompt_table,
+            end_id=self.tokenizer.eos_token_id,
+            pad_id=self.tokenizer.pad_token_id,
+            do_sample=True,
+            temperature=0.1,
+            top_p=0.75,
+            num_beams=1,
+            max_new_tokens=320,
+            use_cache=False)
+        # print(f"Generation time: {time.time() - t_start}s.")
+        output_ids = torch.masked_select(output_ids, output_ids.lt(self.tokenizer.vocab_size)).reshape([1, -1])
+        self.stream.synchronize()
+        return output_ids
 
 
 class InferTrt(object):
-    def __init__(self, logger, torch_ref_model=None):        
+    def __init__(self, logger, qa_save_path, LLM_engine=None, torch_ref_model=None):        
         self.cuda_ctx = cuda.Device(0).retain_primary_context()
         self.cuda_ctx.push()
 
@@ -57,6 +129,8 @@ class InferTrt(object):
             score_threshold=None,
             num_classes=10
         )
+        self.LLM_engine = LLM_engine
+        self.qa_save_path = qa_save_path
         self.torch_ref_model = torch_ref_model
 
     
@@ -86,6 +160,7 @@ class InferTrt(object):
             fp.write(self.buf)
 
     def read(self, path):
+        print("[TensorRT INFO] Loading engine from: ", path)
         with open(path, "rb") as fp:
             self.buf = fp.read()
         self._build_engine()
@@ -245,6 +320,24 @@ class InferTrt(object):
         self.stream.synchronize()
         self.cuda_ctx.pop()
 
+        output_ids_lst = []
+        for q_id, input_llm_id in enumerate(input_ids[0]):
+            input_llm_id = input_llm_id.unsqueeze(0).to(device="cuda:0").contiguous()
+            output_ids = self.LLM_engine.generate(input_llm_id, self.bindings["vision_embeded"])
+            output_ids_lst.append(output_ids)
+        
+        output_qa_lst = []
+        for output_ids in output_ids_lst:
+            output_text = self.LLM_engine.tokenizer.batch_decode(output_ids, skip_special_tokens=True)
+            output_qa_lst.append(
+                dict(
+                    Q=img_metas[0]["vlm_labels"].data[q_id],
+                    A=[qa_pair.split("\nYou")[1].split(". Please provide")[1].split(" ASSISTANT: ")[1] for qa_pair in output_text]
+                )
+            )
+        with open(self.qa_save_path+img_metas[0]["sample_idx"], 'w') as qa_file:
+            json.dump(output_qa_lst, qa_file)
+
         bbox_results = self.get_bbox(self.bindings["all_cls_scores"].clone(), 
                                      self.bindings["all_bbox_preds"].clone(), 
                                      img_metas)
@@ -252,27 +345,11 @@ class InferTrt(object):
         lane_results = self.get_lane(self.bindings["all_lane_cls_one2one"].clone(), 
                                      self.bindings["all_lane_preds_one2one"].clone(), 
                                      img_metas)
-        
-        # for i, input_ids in enumerate(input_ids[0]):
-        #     input_ids = input_ids.unsqueeze(0)
-        #     output_ids = self.lm_head.generate(
-        #         inputs=input_ids,
-        #         images=vision_embeded,
-        #         do_sample=True,
-        #         temperature=0.1,
-        #         top_p=0.75,
-        #         num_beams=1,
-        #         max_new_tokens=320,
-        #         use_cache=True
-        #     )
 
         result_list = [dict() for i in range(len(img_metas))]
         for result_dict, pts_bbox in zip(result_list, bbox_results):
             result_dict['pts_bbox'] = pts_bbox
-        result_list[0]['text_out'] = [dict(
-            Q=img_metas[0]['vlm_labels'].data[0],
-            A="",
-        )]
+        result_list[0]['text_out'] = output_qa_lst
         result_list[0]['lane_results'] = lane_results
         return result_list
 
@@ -281,6 +358,9 @@ def parse_args():
     parser.add_argument('--config',help='test config file path')
     parser.add_argument('--engine_pth', help='engine file path')
     parser.add_argument('--checkpoint', help='checkpoint file', type=str, default='')
+    parser.add_argument('--llm_engine_pth', type=str, default=None)
+    parser.add_argument('--tokenizer_pth', type=str, default=None)
+    parser.add_argument('--qa_save_path', type=str, default=None)
     parser.add_argument('--out', help='output result file in pickle format')
     parser.add_argument(
         '--fuse-conv-bn',
@@ -472,10 +552,14 @@ def main():
     #     # segmentation dataset has `PALETTE` attribute
     #     model.PALETTE = dataset.PALETTE
     
+    if not os.path.exists(args.qa_save_path):
+        os.makedirs(args.qa_save_path)
     # build the engine
     logger = trt.Logger(trt.Logger.VERBOSE)
-    engine = InferTrt(logger)
+    engine = InferTrt(logger, args.qa_save_path)
     engine.read(args.engine_pth)
+    # build LLM engine
+    engine.LLM_engine = InferTrtLLM(llm_engine_pth=args.llm_engine_pth, tokenizer_pth=args.tokenizer_pth)
 
     if not distributed:
         assert False

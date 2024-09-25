@@ -16,3 +16,4 @@ RUN pip install shapely==1.7.1
 RUN pip install onnx==1.16.2 onnxsim==0.4.36
 RUN pip install pycuda==2024.1.2
 RUN pip install numpy==1.23
+RUN pip install onnx_graphsurgeon

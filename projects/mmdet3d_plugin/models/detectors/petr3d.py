@@ -29,8 +29,6 @@ import mmcv
 from projects.mmdet3d_plugin.models.utils.misc import MLN
 from mmdet.models.utils.transformer import inverse_sigmoid
 import time
-import numpy as np
-DUMP_ONNX_DATA = False
 @DETECTORS.register_module()
 class Petr3D(MVXTwoStageDetector):
     """Petr3D."""
@@ -70,7 +68,6 @@ class Petr3D(MVXTwoStageDetector):
                              pts_bbox_head, img_roi_head, img_rpn_head,
                              train_cfg, test_cfg, pretrained)
         self.save_path = save_path
-        self.prev_timestamp = None
         self.grid_mask = GridMask(True, True, rotate=1, offset=False, ratio=0.5, mode=1, prob=0.7)
         self.use_grid_mask = use_grid_mask
         self.stride = stride
@@ -237,10 +234,6 @@ class Petr3D(MVXTwoStageDetector):
         coords3d = coords3d.reshape(B, -1, D*3)
       
         pos_embed  = inverse_sigmoid(coords3d)
-        print(f"[ONNX INFO]: pos_embed_input.size = {pos_embed.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(pos_embed)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "pos_embed_input.bin"))
         coords_position_embeding = self.position_encoder(pos_embed)
 
         return coords_position_embeding
@@ -391,9 +384,6 @@ class Petr3D(MVXTwoStageDetector):
   
   
     def forward_test(self, img_metas, rescale, **data):
-        if self.prev_timestamp is None:
-            self.prev_timestamp = data['timestamp'][0][0].item()
-        data['timestamp'][0] -= self.prev_timestamp
         if not self.test_flag: #for interval evaluation
             if self.with_pts_bbox:
                 self.pts_bbox_head.reset_memory()
@@ -409,30 +399,14 @@ class Petr3D(MVXTwoStageDetector):
                 data[key] = data[key][0][0].unsqueeze(0)
             else:
                 data[key] = data[key][0]
-        print(f"[ONNX INFO] sample_idx: {img_metas[0][0]['sample_idx']}")
-        if not os.path.exists(os.path.join("./onnxs_data", img_metas[0][0]['sample_idx'])):
-            os.makedirs(os.path.join("./onnxs_data", img_metas[0][0]['sample_idx']))
         return self.simple_test(img_metas[0], **data)
 
     def simple_test_pts(self, img_metas, **data):
         """Test function of point cloud branch."""
-        print(f"[ONNX INFO]: intrinsics.size = {data['intrinsics'].shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(data['intrinsics'])
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "intrinsics.bin"))
-        img2lidars_to_dump = data['lidar2img'].inverse()
-        print(f"[ONNX INFO]: img2lidars.size = {img2lidars_to_dump.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(data['lidar2img'].inverse())
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "img2lidars.bin"))
         #check
         location = self.prepare_location(img_metas, **data)
         outs_roi = self.forward_roi_head(location, **data)
         pos_embed = self.position_embeding(data, location, img_metas)
-        print(f"[ONNX INFO]: pos_embed.size = {pos_embed.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(pos_embed)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "pos_embed.bin"))
         bbox_results = []
         if self.with_pts_bbox:
             outs, det_query = self.pts_bbox_head(img_metas, pos_embed, **data)
@@ -449,11 +423,6 @@ class Petr3D(MVXTwoStageDetector):
             lane_results = self.map_head.get_bboxes(outs, img_metas)
 
         generated_text = []
-        for iQ in range(len(data['input_ids'][0])):
-            print(f"[ONNX INFO]: input_ids_{iQ}.size = {data['input_ids'][0][iQ].shape}")
-            if DUMP_ONNX_DATA:
-                onnx_dump_data = torch.clone(data['input_ids'][0][iQ])
-                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], f"input_ids_{iQ}.bin"))
         if self.with_lm_head and not os.path.exists(self.save_path+img_metas[0]['sample_idx']) :
             mmcv.mkdir_or_exist(self.save_path)
             vision_embeded = torch.cat([vision_embeded_obj, vision_embeded_map], dim=1)
@@ -480,15 +449,7 @@ class Petr3D(MVXTwoStageDetector):
     
     def simple_test(self, img_metas, **data):
         """Test function without augmentaiton."""
-        print(f"[ONNX INFO]: data['img'].size = {data['img'].shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(data['img'])
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "img.bin"))
         data['img_feats'] = self.extract_img_feat(data['img'])
-        print(f"[ONNX INFO]: data['img_feats'].size = {data['img_feats'].shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(data['img_feats'])
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "img_feats.bin"))
         bbox_list = [dict() for i in range(len(img_metas))]
         bbox_pts, generated_text, lane_results = self.simple_test_pts(
             img_metas, **data)

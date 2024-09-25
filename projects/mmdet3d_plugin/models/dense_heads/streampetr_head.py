@@ -26,9 +26,7 @@ from projects.mmdet3d_plugin.core.bbox.util import normalize_bbox
 from mmdet.models.utils import NormedLinear
 from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb3d, pos2posemb1d, nerf_positional_encoding
 from projects.mmdet3d_plugin.models.utils.misc import MLN, topk_gather, transform_reference_points, memory_refresh, SELayer_Linear
-import numpy as np
-import os
-DUMP_ONNX_DATA = False
+
 @HEADS.register_module()
 class StreamPETRHead(AnchorFreeHead):
     """Implements the DETR transformer head.
@@ -350,14 +348,7 @@ class StreamPETRHead(AnchorFreeHead):
         self.memory_timestamp -= data['timestamp'].unsqueeze(-1).unsqueeze(-1)
         self.sample_time -= data['timestamp']
         self.memory_egopose = data['ego_pose'].unsqueeze(1) @ self.memory_egopose
-        print(f"[ONNX INFO]: rec_score_bbox.size = {rec_score.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(rec_score)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", data['sample_idx'], "rec_score_bbox.bin"))
-        print(f"[ONNX INFO]: topk_indexes_bbox.size = {topk_indexes.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(topk_indexes)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", data['sample_idx'], "topk_indexes_bbox.bin"))
+        
         return out_memory
 
     def temporal_alignment(self, query_pos, tgt, reference_points):
@@ -523,64 +514,6 @@ class StreamPETRHead(AnchorFreeHead):
                 head with normalized coordinate format (cx, cy, w, l, cz, h, theta, vx, vy). \
                 Shape [nb_dec, bs, num_query, 9].
         """
-        print(f"[ONNX INFO]: timestamp.size = {data['timestamp'].shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(data['timestamp'])
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "timestamp.bin"))
-        if self.memory_embedding is None:
-            is_first_frame = torch.tensor([1.])
-        else:
-            is_first_frame = torch.tensor([0.])
-        print(f"[ONNX INFO]: is_first_frame.size = {is_first_frame.shape}")
-        if DUMP_ONNX_DATA:
-            is_first_frame.numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "is_first_frame.bin"))
-        print(f"[ONNX INFO]: command.size = {data['command'].shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(data['command'])
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "command.bin"))
-        print(f"[ONNX INFO]: can_bus.size = {data['can_bus'].shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(data['can_bus'])
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "can_bus.bin"))
-        print(f"[ONNX INFO]: ego_pose.size = {data['ego_pose'].shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(data['ego_pose'])
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "ego_pose.bin"))
-        print(f"[ONNX INFO]: ego_pose_inv.size = {data['ego_pose_inv'].shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(data['ego_pose_inv'])
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "ego_pose_inv.bin"))
-        if self.memory_embedding is not None:
-            print(f"[ONNX INFO]: memory_embedding_bbox_in.size = {self.memory_embedding.shape}")
-            if DUMP_ONNX_DATA:
-                onnx_dump_data = torch.clone(self.memory_embedding)
-                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_embedding_bbox_in.bin"))
-        if self.memory_reference_point is not None:
-            print(f"[ONNX INFO]: memory_reference_point_bbox_in.size = {self.memory_reference_point.shape}")
-            if DUMP_ONNX_DATA:
-                onnx_dump_data = torch.clone(self.memory_reference_point)
-                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_reference_point_bbox_in.bin"))
-        if self.memory_timestamp is not None:
-            print(f"[ONNX INFO]: memory_timestamp_bbox_in.size = {self.memory_timestamp.shape}")
-            if DUMP_ONNX_DATA:
-                onnx_dump_data = torch.clone(self.memory_timestamp)
-                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_timestamp_bbox_in.bin"))
-        if self.memory_egopose is not None:
-            print(f"[ONNX INFO]: memory_egopose_bbox_in.size = {self.memory_egopose.shape}")
-            if DUMP_ONNX_DATA:
-                onnx_dump_data = torch.clone(self.memory_egopose)
-                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_egopose_bbox_in.bin"))
-        if self.memory_canbus is not None:
-            print(f"[ONNX INFO]: memory_canbus_bbox_in.size = {self.memory_canbus.shape}")
-            if DUMP_ONNX_DATA:
-                onnx_dump_data = torch.clone(self.memory_canbus)
-                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_canbus_bbox_in.bin"))
-        if self.sample_time is not None:
-            print(f"[ONNX INFO]: sample_time_bbox_in.size = {self.sample_time.shape}")
-            if DUMP_ONNX_DATA:
-                onnx_dump_data = torch.clone(self.sample_time)
-                onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "sample_time_bbox_in.bin"))
-        
         # zero init the memory bank
         self.pre_update_memory(data)
         x = data['img_feats']
@@ -647,7 +580,6 @@ class StreamPETRHead(AnchorFreeHead):
             can_bus_embed = self.can_bus_embed(can_bus_input)
             vlm_memory = torch.cat([vlm_memory, can_bus_embed.unsqueeze(-2)], dim=-2)
         # update the memory bank
-        data['sample_idx'] = img_metas[0]['sample_idx']
         out_memory = self.post_update_memory(data, rec_ego_pose, all_cls_scores, all_bbox_preds, outs_dec, mask_dict, rec_can_bus.unsqueeze(-2))
 
         if mask_dict and mask_dict['pad_size'] > 0:
@@ -669,42 +601,7 @@ class StreamPETRHead(AnchorFreeHead):
                 'dn_mask_dict':None,
             }
 
-        print(f"[ONNX INFO]: all_cls_scores.size = {all_cls_scores.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(all_cls_scores)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "all_cls_scores.bin"))
-        print(f"[ONNX INFO]: all_bbox_preds.size = {all_bbox_preds.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(all_bbox_preds)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "all_bbox_preds.bin"))
-        print(f"[ONNX INFO]: vlm_memory_bbox.size = {vlm_memory.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(vlm_memory)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "vlm_memory_bbox.bin"))
-        print(f"[ONNX INFO]: memory_embedding_bbox_out.size = {self.memory_embedding.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(self.memory_embedding)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_embedding_bbox_out.bin"))
-        print(f"[ONNX INFO]: memory_reference_point_bbox_out.size = {self.memory_reference_point.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(self.memory_reference_point)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_reference_point_bbox_out.bin"))
-        print(f"[ONNX INFO]: memory_timestamp_bbox_out.size = {self.memory_timestamp.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(self.memory_timestamp)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_timestamp_bbox_out.bin"))
-        print(f"[ONNX INFO]: memory_egopose_bbox_out.size = {self.memory_egopose.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(self.memory_egopose)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_egopose_bbox_out.bin"))
-        print(f"[ONNX INFO]: memory_canbus_bbox_out.size = {self.memory_canbus.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(self.memory_canbus)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "memory_canbus_bbox_out.bin"))
-        print(f"[ONNX INFO]: sample_time_bbox_out.size = {self.sample_time.shape}")
-        if DUMP_ONNX_DATA:
-            onnx_dump_data = torch.clone(self.sample_time)
-            onnx_dump_data.cpu().numpy().astype(np.float32).tofile(os.path.join("./onnxs_data", img_metas[0]['sample_idx'], "sample_time_bbox_out.bin")) 
+
         return outs, vlm_memory
     
     def prepare_for_loss(self, mask_dict):

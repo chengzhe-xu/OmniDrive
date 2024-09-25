@@ -21,6 +21,7 @@ from mmdet.apis import set_random_seed
 from mmdet.datasets import replace_ImageToTensor
 from mmdet.models.utils.transformer import inverse_sigmoid
 import onnxruntime as ort
+import onnx_graphsurgeon as gs
 from projects.mmdet3d_plugin.models.utils.positional_encoding import pos2posemb1d, nerf_positional_encoding
 from projects.mmdet3d_plugin.models.utils.misc import MLN, topk_gather, transform_reference_points_lane, transform_reference_points, memory_refresh
 
@@ -504,27 +505,26 @@ def main():
     model.eval()
     model.training = False
 
-    dumped_input_pth = "./onnxs_data/4f9ad42bb4a24970b770ba0a87baf47a/"
-    img = np.fromfile(os.path.join(dumped_input_pth, "img.bin"), dtype=np.float32).astype(np.float32).reshape([1,6,3,640,640])
-    intrinsics = np.fromfile(os.path.join(dumped_input_pth, "intrinsics.bin"), dtype=np.float32).astype(np.float32).reshape([1,6,4,4])
-    img2lidars = np.fromfile(os.path.join(dumped_input_pth, "img2lidars.bin"), dtype=np.float32).astype(np.float32).reshape([1,6,4,4])
-    command = np.fromfile(os.path.join(dumped_input_pth, "command.bin"), dtype=np.float32).astype(np.float32).reshape([1])
-    can_bus = np.fromfile(os.path.join(dumped_input_pth, "can_bus.bin"), dtype=np.float32).astype(np.float32).reshape([1,13])
-    is_first_frame = np.fromfile(os.path.join(dumped_input_pth, "is_first_frame.bin"), dtype=np.float32).astype(np.float32).reshape([1])
-    ego_pose = np.fromfile(os.path.join(dumped_input_pth, "ego_pose.bin"), dtype=np.float32).astype(np.float32).reshape([1,4,4])
-    timestamp = np.fromfile(os.path.join(dumped_input_pth, "timestamp.bin"), dtype=np.float32).astype(np.float32).reshape([1])
-    ego_pose_inv = np.fromfile(os.path.join(dumped_input_pth, "ego_pose_inv.bin"), dtype=np.float32).astype(np.float32).reshape([1,4,4])
-    memory_embedding_bbox_in = np.fromfile(os.path.join(dumped_input_pth, "memory_embedding_bbox_in.bin"), dtype=np.float32).astype(np.float32).reshape([1,900,256])
-    memory_reference_point_bbox_in = np.fromfile(os.path.join(dumped_input_pth, "memory_reference_point_bbox_in.bin"), dtype=np.float32).astype(np.float32).reshape([1,900,3])
-    memory_timestamp_bbox_in = np.fromfile(os.path.join(dumped_input_pth, "memory_timestamp_bbox_in.bin"), dtype=np.float32).astype(np.float32).reshape([1,900,1])
-    memory_egopose_bbox_in = np.fromfile(os.path.join(dumped_input_pth, "memory_egopose_bbox_in.bin"), dtype=np.float32).astype(np.float32).reshape([1,900,4,4])
-    memory_canbus_bbox_in = np.fromfile(os.path.join(dumped_input_pth, "memory_canbus_bbox_in.bin"), dtype=np.float32).astype(np.float32).reshape([1,3,14])
-    sample_time_bbox_in = np.fromfile(os.path.join(dumped_input_pth, "sample_time_bbox_in.bin"), dtype=np.float32).astype(np.float32).reshape([1])
-    memory_timestamp_map_in = np.fromfile(os.path.join(dumped_input_pth, "memory_timestamp_map_in.bin"), dtype=np.float32).astype(np.float32).reshape([1,900,1])
-    sample_time_map_in = np.fromfile(os.path.join(dumped_input_pth, "sample_time_map_in.bin"), dtype=np.float32).astype(np.float32).reshape([1])
-    memory_egopose_map_in = np.fromfile(os.path.join(dumped_input_pth, "memory_egopose_map_in.bin"), dtype=np.float32).astype(np.float32).reshape([1,900,4,4])
-    memory_embedding_map_in = np.fromfile(os.path.join(dumped_input_pth, "memory_embedding_map_in.bin"), dtype=np.float32).astype(np.float32).reshape([1,900,256])
-    memory_reference_point_map_in = np.fromfile(os.path.join(dumped_input_pth, "memory_reference_point_map_in.bin"), dtype=np.float32).astype(np.float32).reshape([1,900,11,3])
+    img = np.ones([1,6,3,640,640]).astype(np.float32)
+    intrinsics = np.ones([1,6,4,4]).astype(np.float32)
+    img2lidars = np.ones([1,6,4,4]).astype(np.float32)
+    command = np.ones([1]).astype(np.float32)
+    can_bus = np.ones([1,13]).astype(np.float32)
+    is_first_frame = np.ones([1]).astype(np.float32)
+    ego_pose = np.ones([1,4,4]).astype(np.float32)
+    timestamp = np.ones([1]).astype(np.float32)
+    ego_pose_inv = np.ones([1,4,4]).astype(np.float32)
+    memory_embedding_bbox_in = np.ones([1,900,256]).astype(np.float32)
+    memory_reference_point_bbox_in = np.ones([1,900,3]).astype(np.float32)
+    memory_timestamp_bbox_in = np.ones([1,900,1]).astype(np.float32)
+    memory_egopose_bbox_in = np.ones([1,900,4,4]).astype(np.float32)
+    memory_canbus_bbox_in = np.ones([1,3,14]).astype(np.float32)
+    sample_time_bbox_in = np.ones([1]).astype(np.float32)
+    memory_timestamp_map_in = np.ones([1,900,1]).astype(np.float32)
+    sample_time_map_in = np.ones([1]).astype(np.float32)
+    memory_egopose_map_in = np.ones([1,900,4,4]).astype(np.float32)
+    memory_embedding_map_in = np.ones([1,900,256]).astype(np.float32)
+    memory_reference_point_map_in = np.ones([1,900,11,3]).astype(np.float32)
 
     proxy = OmniDriveVisionTrtProxy(model.module)
     args = [
@@ -608,6 +608,23 @@ def main():
     onnx_mod = onnx.shape_inference.infer_shapes(onnx_mod) 
     onnx.save(onnx_mod, output_onnx_pth)
     print(output_onnx_pth)
+
+    onnx_model = onnx.load(output_onnx_pth)
+    graph = gs.import_onnx(onnx_model)
+
+    for idx in range(len(graph.nodes)):
+        if "img_backbone" in graph.nodes[idx].name or len(graph.nodes[idx].name) == 0:
+            # backbone, fp16
+            pass
+        else:
+            graph.nodes[idx].name = graph.nodes[idx].name + "_FORCEFP32"
+    
+    graph.toposort().cleanup()
+    onnx_model = gs.export_onnx(graph)
+    onnx_model, _ = onnxsim.simplify(onnx_model)
+    onnx_model = onnx.shape_inference.infer_shapes(onnx_model) 
+    onnx.save(onnx_model, output_onnx_pth.replace(".onnx", "_fp16.onnx"))
+    print(output_onnx_pth.replace(".onnx", "_fp16.onnx"))
 
 if __name__ == '__main__':
     torch.multiprocessing.set_start_method('fork')

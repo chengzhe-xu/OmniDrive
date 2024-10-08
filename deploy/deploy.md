@@ -43,7 +43,7 @@ docker build -t omnidrive-deploy:v0 --file ./omnidrive-deploy.dockerfile .
 docker run -it --name omnidrive-deploy --gpus all --shm-size=8g -v <workspace>:<workspace> omnidrive-deploy:v0 /bin/bash
 ```
 
-To setup TensorRT library, you may refer to [TensorRT github](https://github.com/NVIDIA/TensorRT). You should choose the correct wheel according to the python version in your environment. In this demo, the python version inside the docker is 3.8. So you should install the wheel that has `cp38` in it's name.
+To setup TensorRT library, you may refer to [TensorRT github](https://github.com/NVIDIA/TensorRT). You should choose the correct wheel according to the python version in your environment. In this demo, the python version inside the docker is 3.8. So you should install the wheel that has `cp38` in its name.
 
 ```bash
 cd <TensorRT_PATH>/python/
@@ -145,17 +145,17 @@ FP16 engine | FP16 engine  | 0.306 |0.166|0.337|0.615
 FP16 engine | FP16 activation INT4 weight  | 0.306|0.171|0.349|0.634
 
 ### Inference latencies <a name="latency"></a>
-Here is the runtime latency analysis for the engines. The data was collected on an A100. And the unit in the following table is second.
+Here is the runtime latency analysis for the engines. The data was collected on an A100. And the unit in the following table is `ms`.
 
 Metrics | PyTorch | FP32 Vision engine | FP16 Vision engine
---------| ------- | ----- | ---
-Latency | 0.274   | 0.075 | 0.0259
+--------| ------- | ------- | ------
+Latency | 274.176 | 75.766  | 25.938
 
-Metrics                      | PyTorch | FP16 LLM engine | FP16 activation INT4 weight
---------------------------   | ------- | -----  | ---
-Time To First Token (TTFT)   | 0.108   | 0.011  | 0.012
-Time Per Output Token (TPOT) | 0.011   | 0.0033 | 0.0030
-Time Per Frame               | 1.038   | 0.302  | 0.280
+Metrics                      | PyTorch  | FP16 LLM engine | FP16 activation INT4 weight
+--------------------------   | -------  | -------- | ---
+Time To First Token (TTFT)   | 107.976  | 11.205   | 11.957
+Time Per Output Token (TPOT) |  10.692  |  3.352   |  3.084
+Time Per Frame               | 1038.151 | 302.849  | 280.276
 
 ## Future works <a name="future"></a>
 - [ ] Better quantization (accuracy and latency)

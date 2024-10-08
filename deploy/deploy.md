@@ -43,7 +43,7 @@ docker build -t omnidrive-deploy:v0 --file ./omnidrive-deploy.dockerfile .
 docker run -it --name omnidrive-deploy --gpus all --shm-size=8g -v <workspace>:<workspace> omnidrive-deploy:v0 /bin/bash
 ```
 
-To setup TensorRT library, you may refer to [TensorRT github](https://github.com/NVIDIA/TensorRT). You should choose the correct wheel according to the python version in your environment. In this demo, the python version inside the docker is 3.8. So you should install the wheel that has cp38 in it's name.
+To setup TensorRT library, you may refer to [TensorRT github](https://github.com/NVIDIA/TensorRT). You should choose the correct wheel according to the python version in your environment. In this demo, the python version inside the docker is 3.8. So you should install the wheel that has `cp38` in it's name.
 
 ```bash
 cd <TensorRT_PATH>/python/
@@ -78,7 +78,7 @@ pip3 install transformers==4.31.0
 ## Vision engine build <a name="vision"></a>
 The vision component of the OmniDrive includes the vision backbone, positional embedding, bounding box detection head and map head. We will export a unified ONNX model for the vision component and build engines based on the ONNX models subsequently.
 
-To export the [OmniDrive](../projects/configs/OmniDrive/eva_base_tinyllama.py) from pytorch to onnx
+To export the [OmniDrive](../projects/configs/OmniDrive/eva_base_tinyllama.py) from PyTorch to ONNX
 ```bash
 PYTHONPATH="./":$PYTHONPATH python3 ./deploy/export_vision.py ./projects/configs/OmniDrive/eva_base_tinyllama.py <checkpoint_path>
 ```
@@ -115,7 +115,7 @@ LD_LIBRARY_PATH=${TRT_HOME}/lib/:$LD_LIBRARY_PATH python3 ./deploy/convert_llm_c
 ```
 After this step, the `.safetensors` file should be generated.
 
-Since OmniDrive utilizes a modified version of TinyLlama, we need to change the `architecture` field in the safetensor's `config.json` from the default value `"architecture": "LlavaLlamaForCausalLM",` to `"architecture": "LlamaForCausalLM"`. We can run `trtllm-build` to build the TensorRT-LLM engine after this modification.
+Since OmniDrive utilizes a modified version of TinyLlama, we need to change the `architecture` field in the safetensor's `config.json` from the default value `"architecture": "LlavaLlamaForCausalLM"` to `"architecture": "LlamaForCausalLM"`. We can run `trtllm-build` to build the TensorRT-LLM engine after this modification.
 
 ```bash
 # FP16 engine and FP16 activation, INT4 weight
@@ -128,7 +128,7 @@ We provide a shell script to run the full benchmark for the OmniDrive engine.
 ```bash
 bash ./deploy/dist_test.sh <TensorRT_PATH> <config_path> <tokenizer_path> <vision_engine_path> <LLM_engine_path>/x86_1gpu_<fp16_or_w4a16>/ <QA_save_path>
 ```
-Similar to the PyTorch benchmark, the script will display performance evaluation for detection task, and will save all generated planning trajectories into a result folder. Please evaluate the planning results using [```eval_planning.py```](../evaluation/eval_planning.py).
+Similar to the PyTorch benchmark, the script will display performance evaluation for detection task, and will save all generated planning trajectories into `<QA_save_path>` folder. Please evaluate the planning results using [`eval_planning.py`](../evaluation/eval_planning.py).
 ```bash
 python3 ./evaluation/eval_planning.py --base_path ./data/nuscenes/ --pred_path <QA_save_path>
 ```
@@ -145,17 +145,17 @@ FP16 engine | FP16 engine  | 0.306 |0.166|0.337|0.615
 FP16 engine | FP16 activation INT4 weight  | 0.306|0.171|0.349|0.634
 
 ### Inference latencies <a name="latency"></a>
-Here is the runtime latency analysis for the engines. The data was collected on an A100.
+Here is the runtime latency analysis for the engines. The data was collected on an A100. And the unit in the following table is second.
 
 Metrics | PyTorch | FP32 Vision engine | FP16 Vision engine
-------|---- | ---- | ---
-engine latency | xxx| xxx | xxx  
+--------| ------- | ----- | ---
+Latency | 0.274   | 0.075 | 0.0259
 
 Metrics                      | PyTorch | FP16 LLM engine | FP16 activation INT4 weight
---------------------------   | --- | --- | ---
-Time To First Token (TTFT)   | xxx | xxx | xxx
-Time Per Output Token (TPOT) | xxx | xxx | xxx
-Time Per Frame               | xxx | xxx | xxx
+--------------------------   | ------- | -----  | ---
+Time To First Token (TTFT)   | 0.108   | 0.011  | 0.012
+Time Per Output Token (TPOT) | 0.011   | 0.0033 | 0.0030
+Time Per Frame               | 1.038   | 0.302  | 0.280
 
 ## Future works <a name="future"></a>
 - [ ] Better quantization (accuracy and latency)

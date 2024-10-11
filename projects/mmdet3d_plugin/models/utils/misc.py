@@ -175,7 +175,7 @@ class MLN(nn.Module):
         self.gamma = nn.Linear(f_dim, f_dim)
         self.beta = nn.Linear(f_dim, f_dim)
         if self.with_ln:
-            self.ln = nn.LayerNorm(f_dim, elementwise_affine=False)
+            self.ln = nn.LayerNorm(f_dim, elementwise_affine=True)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -183,6 +183,8 @@ class MLN(nn.Module):
         nn.init.zeros_(self.beta.weight)
         nn.init.ones_(self.gamma.bias)
         nn.init.zeros_(self.beta.bias)
+        nn.init.ones_(self.ln.weight)
+        nn.init.zeros_(self.ln.bias)
 
     def forward(self, x, c):
         if self.with_ln:

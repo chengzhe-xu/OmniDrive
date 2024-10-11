@@ -623,8 +623,8 @@ def main():
     onnx_model = gs.export_onnx(graph)
     onnx_model, _ = onnxsim.simplify(onnx_model)
     onnx_model = onnx.shape_inference.infer_shapes(onnx_model) 
-    onnx.save(onnx_model, output_onnx_pth.replace(".onnx", "_fp16.onnx"))
-    print(output_onnx_pth.replace(".onnx", "_fp16.onnx"))
+    onnx.save(onnx_model, output_onnx_pth.replace(".onnx", "_mixed_precision.onnx"))
+    print(output_onnx_pth.replace(".onnx", "_mixed_precision.onnx"))
 
 if __name__ == '__main__':
     torch.multiprocessing.set_start_method('fork')

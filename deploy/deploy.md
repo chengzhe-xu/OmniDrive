@@ -25,7 +25,7 @@ To enhence inference efficiency, engines are built seperately for the vision com
     1) convert the checkpoints to Hugging Face safetensor with TensorRT-LLM
     2) build engines with `trtllm-build`
 
-<img src="../assets/deployment_strategy.png" width="800">
+<img src="../assets/deployment_strategy.png" width="1000">
 
 We use TensorRT 10.4, and TensorRT-LLM 0.13 to deploy the OmniDrive on A100 GPU, X86_64 Linux platforms. (see this [config](../projects/configs/OmniDrive/eva_base_tinyllama.py) for model details.) Please notice that to run TensorRT-LLM within our environment, a patch must be applied to the TensorRT-LLM. You may refer to [Environment setup](#env) section for more details.
 
@@ -85,9 +85,9 @@ PYTHONPATH="./":$PYTHONPATH python3 ./deploy/export_vision.py ./projects/configs
 The exported ONNX model for the vision component will be at the `./onnxs/eva_base_tinyllama.onnx`.
 
 > **NOTE**:
-> We observe higher numerical sensitivity nature in omnidrive. Using FP16 precision for the whole network may cause significant performance degradation. When using FP16 precision, we recommend that you convert only the backbone as FP16 and keep the remaining operators in FP32. To set the precision for specific parts of the vision network, we mark the operations and generate a seperate ONNX model for FP16 engine building, which has the filename ending with ```_fp16.onnx```.
+> We observe higher numerical sensitivity nature in omnidrive. Using FP16 precision for the whole network may cause significant performance degradation. When using FP16 precision, we recommend that you convert only the backbone as FP16 and keep the remaining operators in FP32. To set the precision for specific parts of the vision network, we mark the operations and generate a seperate ONNX model for FP16 engine building, which has the filename ending with ```_mixed_precision.onnx```.
 
-We can then build the TensorRT engines for the vision component using ```trtexec```. Be sure to use the ONNX file ending with ```_fp16.onnx``` when building FP16 engines:
+We can then build the TensorRT engines for the vision component using ```trtexec```. Be sure to use the ONNX file ending with ```_mixed_precision.onnx``` when building engines with FP16 enabled:
 ```bash
 export TRT_HOME=<TensorRT_PATH>
 export LD_LIBRARY_PATH=${TRT_HOME}/lib/:$LD_LIBRARY_PATH
@@ -95,11 +95,11 @@ export LD_LIBRARY_PATH=${TRT_HOME}/lib/:$LD_LIBRARY_PATH
 ${TRT_HOME}/bin/trtexec --onnx=./onnxs/eva_base_tinyllama.onnx --skipInference --saveEngine=./engines/eva_base_tinyllama.engine --useCudaGraph
 
 # FP16 enigne
-${TRT_HOME}/bin/trtexec --onnx=./onnxs/eva_base_tinyllama_fp16.onnx --skipInference --saveEngine=./engines/eva_base_tinyllama_fp16.engine --fp16 --precisionConstraints=obey --layerPrecisions=*_FORCEFP32:fp32 --useCudaGraph
+${TRT_HOME}/bin/trtexec --onnx=./onnxs/eva_base_tinyllama_mixed_precision.onnx --skipInference --saveEngine=./engines/eva_base_tinyllama_mixed_precision.engine --fp16 --precisionConstraints=obey --layerPrecisions=*_FORCEFP32:fp32 --useCudaGraph
 ```
 
 ## LLM engine build <a name="llm"></a>
-The LLM head is fine-tuned based on a pretrained Hugging Face model, therefore, the engine requires the weights from both the pretrained model and OmniDrive's checkpoint. 
+The LLM head is fine-tuned based on a pretrained Hugging Face [model](https://huggingface.co/TinyLlama/TinyLlama-1.1B-Chat-v1.0), therefore, the engine requires the weights from both the pretrained model and OmniDrive's checkpoint. 
 The first step is to combine and save the weights for LLM component.
 ```bash
 PYTHONPATH="./":$PYTHONPATH  python3 ./deploy/save_llm_checkpoint.py --config ./projects/configs/OmniDrive/eva_base_tinyllama.py --checkpoint <checkpoint_path> --llm_checkpoint <pretrained_LLM_path> --save_checkpoint_pth <LLM_checkpoint_path>

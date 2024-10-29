@@ -492,6 +492,13 @@ def main():
 
     # build the model and load checkpoint
     cfg.model.train_cfg = None
+    cfg.model.export_onnx = True
+    cfg.model.img_backbone["flash_attn"] = False
+    cfg.model.img_backbone["with_cp"] = False
+    cfg.model.pts_bbox_head["transformer"]["flash_attn"] = False
+    cfg.model.pts_bbox_head["transformer"]["with_cp"] = False
+    cfg.model.map_head["transformer"]["flash_attn"] = False
+    cfg.model.map_head["transformer"]["with_cp"] = False
     model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
     fp16_cfg = cfg.get('fp16', None)
     if fp16_cfg is not None:
@@ -604,8 +611,9 @@ def main():
         verbose=True)
     
     onnx_mod = onnx.load(output_onnx_pth)
+    onnx_mod = gs.export_onnx(gs.import_onnx(onnx_mod).toposort().cleanup())
     onnx_mod, _ = onnxsim.simplify(onnx_mod)
-    onnx_mod = onnx.shape_inference.infer_shapes(onnx_mod) 
+    onnx_mod = onnx.shape_inference.infer_shapes(onnx_mod)
     onnx.save(onnx_mod, output_onnx_pth)
     print(output_onnx_pth)
 
@@ -622,7 +630,7 @@ def main():
     graph.toposort().cleanup()
     onnx_model = gs.export_onnx(graph)
     onnx_model, _ = onnxsim.simplify(onnx_model)
-    onnx_model = onnx.shape_inference.infer_shapes(onnx_model) 
+    onnx_model = onnx.shape_inference.infer_shapes(onnx_model)
     onnx.save(onnx_model, output_onnx_pth.replace(".onnx", "_mixed_precision.onnx"))
     print(output_onnx_pth.replace(".onnx", "_mixed_precision.onnx"))
 

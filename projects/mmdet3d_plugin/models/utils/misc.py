@@ -167,7 +167,6 @@ class MLN(nn.Module):
         self.c_dim = c_dim
         self.f_dim = f_dim
         self.with_ln = with_ln
-        self.export_onnx = export_onnx
 
         self.reduce = nn.Sequential(
             nn.Linear(c_dim, f_dim),
@@ -176,7 +175,7 @@ class MLN(nn.Module):
         self.gamma = nn.Linear(f_dim, f_dim)
         self.beta = nn.Linear(f_dim, f_dim)
         if self.with_ln:
-            self.ln = nn.LayerNorm(f_dim, elementwise_affine=export_onnx)
+            self.ln = nn.LayerNorm(f_dim, elementwise_affine=False)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -184,10 +183,11 @@ class MLN(nn.Module):
         nn.init.zeros_(self.beta.weight)
         nn.init.ones_(self.gamma.bias)
         nn.init.zeros_(self.beta.bias)
+
         if self.with_ln and self.export_onnx:
             nn.init.ones_(self.ln.weight)
             nn.init.zeros_(self.ln.bias)
-
+            
     def forward(self, x, c):
         if self.with_ln:
             x = self.ln(x)
@@ -240,7 +240,7 @@ def load_model(base_model, use_lora, frozen):
                 task_type="CAUSAL_LM")
         model = get_peft_model(model, peft_config)
 
-    for param in filter(lambda p: p.requires_grad,model.parameters()):
-        param.data = param.data.to(torch.float32)
+        for param in filter(lambda p: p.requires_grad,model.parameters()):
+            param.data = param.data.to(torch.float32)
                
     return model

@@ -22,7 +22,7 @@ num_gpus = 8
 batch_size = 2
 num_iters_per_epoch = 28130 // (num_gpus * batch_size)
 num_epochs = 6
-llm_path = 'ckpts/final/'
+llm_path = 'ckpts/pretrain_qformer/'
 
 collect_keys=['lidar2img', 'intrinsics', 'extrinsics','timestamp', 'img_timestamp', 'ego_pose', 'ego_pose_inv', 'command', 'can_bus']
 input_modality = dict(
@@ -292,5 +292,5 @@ find_unused_parameters=False #### when use checkpoint, find_unused_parameters mu
 checkpoint_config = dict(interval=num_iters_per_epoch//2, max_keep_ckpts=3)
 runner = dict(
     type='IterBasedRunner', max_iters=num_epochs * num_iters_per_epoch)
-load_from=None
+load_from='ckpts/eva02_petr_proj.pth'
 resume_from=None

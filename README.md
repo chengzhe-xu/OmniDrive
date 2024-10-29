@@ -1,74 +1,72 @@
-# Environment Setup
 
-**1. Download nuScenes**
+# OmniDrive: LLM-Agent for Autonomous Driving with 3D Perception, Reasoning and Planning
 
-Download the [nuScenes dataset](https://www.nuscenes.org/download) to `./data/nuscenes`.
+<!-- ## Introduction -->
 
-**2. Download infos files**
-Download the [Info Files](https://drive.google.com/file/d/1YHJA29BCWgUxxRh7UImoaoTAIi8hBOEO/view?usp=sharing).
+https://github.com/NVlabs/OmniDrive/assets/74858581/f64987a0-b890-416d-90c1-e0daaeb542d6
 
-Unzip the data_nusc.tar.gz and organize the files following the Folder structure.
+We present OmniDrive, a holistic Drive LLM-Agent framework for end-to-end autonomous driving. Our main contributions involve novel solutions in both model (OmniDrive-Agent) and benchmark (OmniDrive-nuScenes). The former features a novel 3D multimodal LLM design that uses sparse queries to lift and compress visual representations into 3D. The latter is constituted of comprehensive VQA tasks for reasoning and planning, including scene description, traffic regulation, 3D grounding, counterfactual reasoning, decision making and planning.
 
-## Pretrained Weights
-```shell
-cd /path/to/StreamPETR
-mkdir ckpts
+<div align="center">
+<img src="https://github.com/NVlabs/OmniDrive/releases/download/v1.0/teaser.png" width="1000">
+</div>
+
+## News
+- `[2024/07/18]` OmniDrive-nuScenes model release.
+- `[2024/05/02]` OmniDrive-nuScenes dataset release.
+- `[2024/05/02]` [ArXiv](https://arxiv.org/abs/2405.01533) technical report release.
+
+## Getting Started
+
+Please follow our documentation step by step. If you like our work, please recommend it to your colleagues and friends.
+
+1. [**Environment Setup.**](./docs/setup.md)
+
+## Currently Supported Features
+- [x] OmnDrive Training Framework
+- [x] OmnDrive Dataset
+- [ ] OmnDrive Checkpoint
+- [x] Evaluation
+- [x] Data Generation
+- [ ] TensorRT Inference
+- [ ] DeepSpeed
+- [ ] Tiny LLM
+
+## Visual Results
+
+Joint End-to-end Planning and Reasoning
+
+<div align="center">
+<img src="https://github.com/NVlabs/OmniDrive/releases/download/v1.0/demo1.gif" width="1000">
+
+<img src="https://github.com/NVlabs/OmniDrive/releases/download/v1.0/demo2.gif" width="1000">
+</div>
+<br>
+
+Interactive Conversation with Ego Vehicle
+
+<div align="center">
+<img src="https://github.com/NVlabs/OmniDrive/releases/download/v1.0/demo3.gif" width="1000">
+</div>
+<br>
+
+Counterfactual Reasoning of Planning Behaviors
+
+<div align="center">
+<img src="https://github.com/NVlabs/OmniDrive/releases/download/v1.0/demo4.png" width="1000">
+
+<img src="https://github.com/NVlabs/OmniDrive/releases/download/v1.0/demo5.png" width="1000">
+</div>
+
+## Citation
+If this work is helpful for your research, please consider citing:
+
 ```
-Please download the pretrained [2D llm weights](https://drive.google.com/drive/folders/1yqNyAp3Pp9CdENpah6AiMt3IfOXbqeUO?usp=sharing) to ./ckpts. 
-
-
-
-**3. Install Packages**
-```shell
-cd /path/to/StreamPETR
-conda create -n demo python=3.9
-pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --extraindex-url https://download.pytorch.org/whl/cu117
-pip install flash-attn==0.2.8
-pip install transformers==4.31.0 
-pip install mmcv-full==1.6.2 -f https://download.openmmlab.com/mmcv/dist/cu117/torch1.13/index.html
-pip install mmdet==2.28.2
-pip install mmsegmentation==0.30.0
-git clone https://github.com/open-mmlab/mmdetection3d.git
-cd mmdetection3d
-git checkout v1.0.0rc6 
-pip install -e .
-pip uninstall setuptools
-pip install setuptools==59.5.0
+@article{wang2024omnidrive,
+  title={{OmniDrive}: A Holistic LLM-Agent Framework for Autonomous Driving with 3D Perception, Reasoning and Planning},
+  author={Shihao Wang and Zhiding Yu and Xiaohui Jiang and Shiyi Lan and Min Shi and Nadine Chang and Jan Kautz and Ying Li and Jose M. Alvarez},
+  journal={arXiv:2405.01533},
+  year={2024}
+}
 ```
 
-
-After preparation, you will be able to see the following directory structure:  
-
-**4. Folder structure**
-```
-OmniDrive
-├── projects/
-├── iter_10548.pth
-├── mmdetection3d/
-├── tools/
-├── configs/
-├── ckpts/
-│   ├── final/
-├── data/
-│   ├── nuscenes/
-│   │   ├── maps/
-│   │   ├── samples/
-│   │   ├── sweeps/
-│   │   ├── v1.0-test/
-│   │   ├── v1.0-trainval/
-│   │   ├── conv/
-│   │   ├── desc/
-│   │   ├── keywords/
-│   │   ├── vqa/
-│   │   ├── nuscenes2d_ego_temporal_infos_train.pkl
-│   │   ├── nuscenes2d_ego_temporal_infos_val.pkl
-│   │   ├── data_dict_sample.pkl
-│   │   ├── data_dict_subset_B.json
-│   │   ├── data_dict_subset_B_val.pkl
-│   │   ├── lane_obj_train.pkl
-```
-
-**5. Inference**
-```shell
-tools/dist_test.sh .projects/configs/StreamPETR/mask_eva_lane_det_vlm_all.py ./iter_10548.pth 1 --eval bbox
-```
